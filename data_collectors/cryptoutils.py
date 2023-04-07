@@ -15,7 +15,10 @@ class CryptoConfiguration:
         self.symbol = symbol
         self.interval = interval
         self.start_datetime = start_datetime
-        self.end_datetime = end_datetime
+        if end_datetime == None:
+            self.end_datetime = 'now'
+        else:
+            self.end_datetime = end_datetime
         self.destination_dir = destination_dir
 
 def read_configuration(configuration_file):

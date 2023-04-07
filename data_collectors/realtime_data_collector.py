@@ -56,6 +56,7 @@ def download_realtime_data(configuration_file):
         twm.start_kline_socket(callback=handle_socket_message, symbol=configuration.symbol, interval=configuration.interval)
 
     twm.join()
+
     for file in files:
         file.close()
 
