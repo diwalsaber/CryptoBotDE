@@ -1,19 +1,22 @@
 #Syntax
-#Configurations: //list of configurations
-#   - <conf_item>*  // configuration item
-#      Pair: <pair>
-#      Interval: <interval> on of 1s 1m 3m 5m 15m 30m 1h 2h 4h  6h 8h 12h  1d 3d 1w 1mo
-#      HistoryStartDate: <a date> in the format yyyy-mm-dd
-#      HistoryEndDate: <a date> in the format yyyy-mm-dd or 'yesterday' for yesterday date
-Configurations:
-  - BTCUSDT_1d:
-    Pair: BTCUSDT
-    Interval: 1d
-    HistoryStartDate: 2017-01-01
-    HistoryEndDate: yesterday
+# //list of configurations
+#   - <conf_item>*  // configuration item (any name)
+#      symbol: <symbol>
+#      interval: <interval> on of 1s 1m 3m 5m 15m 30m 1h 2h 4h  6h 8h 12h  1d 3d 1w 1mo
+#      history_start_date: <a date> in the format yyyy-mm-dd
+#      history_end_date: <a date> in the format yyyy-mm-dd or 'yesterday' for yesterday date
+#      destination_dir: path   path where to save downloaded data
 
-  - ETHUSDT_1d:
-    Pair: ETHUSDT
-    Interval: 1d
-    HistoryStartDate: 2017-01-01
-    HistoryEndDate: yesterday
+- BTCUSDT_1d:
+    symbol: BTCUSDT
+    interval: 1m
+    history_start_date: 2017-01-01
+    history_end_date: now
+    destination_dir: data
+
+- ETHUSDT_1d:
+    symbol: ETHUSDT
+    interval: 1m
+    history_start_date: 2017-01-01
+    history_end_date: now
+    destination_dir: data
