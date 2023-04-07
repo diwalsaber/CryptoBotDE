@@ -177,3 +177,9 @@ pyrightconfig.json
 
 data_collectors/data
 .idea/
+
+*_BASE_*
+*_BACKUP_*
+*_LOCAL_*
+*_REMOTE_*
+*.orig
