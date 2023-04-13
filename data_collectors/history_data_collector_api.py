@@ -5,7 +5,9 @@ from data_collectors import cryptoutils
 
 api_key = ''
 api_secret = ''
-
+header = ['open_time','open_price','high_price','low_price',
+          'close_price','base_volume','close_time','quote_volume',
+          'number_trades','taker_buy_base','taker_buy_quote','ignore']
 
 def download_history_data(configuration_file):
     """
@@ -29,6 +31,9 @@ def download_history_data(configuration_file):
 def download_symbol_data(destination_data_dir, start_date, end_date, symbol, interval):
     client = Client(api_key, api_secret)
     file = open((destination_data_dir+'/{}_{}.csv').format(symbol, interval), "w")
+    #write header
+    file.write(','.join(str(h) for h in header) + '\n')
+    #write rows
     for kline in client.get_historical_klines_generator(symbol=symbol,
                                                         interval=interval,
                                                         start_str=str(int(start_date.timestamp()*1000)),
