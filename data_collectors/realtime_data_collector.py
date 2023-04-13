@@ -7,7 +7,9 @@ api_secret = ''
 writers  = {}
 files  = {}
 configurations = {}
-
+header = ['open_time','open_price','high_price','low_price',
+          'close_price','base_volume','close_time','quote_volume',
+          'number_trades','taker_buy_base','taker_buy_quote','ignore']
 
 def handle_socket_message(msg):
     symbol = msg['s']
@@ -19,8 +21,10 @@ def handle_socket_message(msg):
         print(filename)
         if writers.get(filename) == None:
             file = open(filename, "w", encoding='UTF8', newline='')
-            writers[filename] = csv.writer(file)
+            writer = csv.writer(file)
+            writers[filename] = writer
             files[filename] = file
+            writer.writerow(header)
 
         writer = writers[filename]
         file = files[filename]
@@ -35,7 +39,7 @@ def handle_socket_message(msg):
                 content['n'],
                 content['V'],
                 content['Q'],
-                0]
+                content['B']]
         writer.writerow(line)
         file.flush()
 
