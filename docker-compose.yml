@@ -1,7 +1,7 @@
 services:
   postgres:
     container_name: postgres
-    image: postgres:latest
+    image: timescale/timescaledb:latest-pg15
     restart: always
     environment:
       POSTGRES_PASSWORD: postgres
