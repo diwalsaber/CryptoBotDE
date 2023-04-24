@@ -1,6 +1,7 @@
 from data_collectors import cryptoutils
 import csv
 from binance import ThreadedWebsocketManager
+import psycopg2
 
 api_key = ''
 api_secret = ''
@@ -10,6 +11,7 @@ configurations = {}
 header = ['open_time','open_price','high_price','low_price',
           'close_price','base_volume','close_time','quote_volume',
           'number_trades','taker_buy_base','taker_buy_quote','ignore']
+symbol_id = {"BTCUSDT": 1, "ETHUSDT": 2, "DOGEUSDT": 3}
 
 def handle_socket_message(msg):
     symbol = msg['s']
@@ -43,6 +45,21 @@ def handle_socket_message(msg):
         writer.writerow(line)
         file.flush()
 
+        # format data to insert it in databse (table for real time data)
+        line_db = [content['t'],
+                   symbol_id[msg['s']],
+                   content['o'],
+                   content['h'],
+                   content['l'],
+                   content['c'],
+                   content['v'],
+                   content['T'],
+                   content['q'],
+                   content['n'],
+                   content['V'],
+                   content['Q']]
+        insert_data_table(line_db)
+
 
 def download_realtime_data(configuration_file):
     """
@@ -67,6 +84,37 @@ def download_realtime_data(configuration_file):
 
 def make_filename(symbol, interval):
     return '{}/{}_{}_realtime.csv'.format(configurations[symbol+'_'+interval].destination_dir, symbol, interval)
+
+
+def insert_data_table(row):
+    """
+    Store the klines data coming from the websocket into database (table CandlestickRealTime)
+    :param data:
+    :return:
+    """
+    try:
+        conn = psycopg2.connect(
+        host="localhost",
+        database="postgres",
+        user="postgres",
+        password="postgres",
+        port="5432")
+
+        cur = conn.cursor()
+
+        insert_query = "INSERT INTO CandlestickRealTime VALUES (to_timestamp({}/1000),{},{},{},{},{},{},to_timestamp({}/1000),{},{},{},{})" \
+            .format(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11])
+        
+        cur.execute(insert_query)
+
+        cur.close()
+
+        conn.commit()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 download_realtime_data('config.yml')
