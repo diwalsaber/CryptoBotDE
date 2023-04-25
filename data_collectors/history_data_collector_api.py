@@ -1,6 +1,7 @@
 import datetime
 from threading import Thread
 
+import psycopg2
 from binance.client import Client
 
 from data_collectors import cryptoutils
@@ -67,7 +68,7 @@ def download_missing_symbol_data(destination_data_dir, symbol, interval):
         #write header
         connection = DBTools.get_connection()
         cursor = connection.cursor()
-        symbolId = cryptoutils.get_symbol_id(cursor, symbol)
+        symbolId = cryptoutils.get_symbol_id(symbol)
         file.write(','.join(str(h) for h in header) + '\n')
         now = datetime.datetime.now()
         start_datetime = datetime.datetime(now.year, now.month, now.day, tzinfo=None)
@@ -108,10 +109,12 @@ def download_missing_symbol_data(destination_data_dir, symbol, interval):
                                     number_trades,taker_buy_base,taker_buy_quote from tmp 
                                         where to_timestamp(open_time/1000) 
                                             not IN (select opentime from CandleStickHistorical 
-                                                    where opentime >  current_timestamp - interval '2 DAYS'))""".format(symbolId))
+                                                    where opentime >  (select max(opentime) from CandleStickHistorical WHERE  opentime < current_timestamp - interval '2 DAYS')))""".format(symbolId))
+        cursor.execute("DROP TABLE IF EXISTS TMP")
         connection.commit()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
     finally:
         DBTools.return_connection(connection)
 
-download_missing_history_data()
 

@@ -1,5 +1,7 @@
 import datetime
 from datetime import datetime
+
+import psycopg2
 from psycopg2 import pool
 import yaml
 from yaml.loader import SafeLoader
@@ -96,11 +98,18 @@ class CryptoConfiguration:
         self.destination_dir = destination_dir
 
 
-def get_symbol_id(cursor, symbol):
-    query = "select symbolid from Symbol where name ='{}'".format(symbol)
-    cursor.execute(query)
-    record = cursor.fetchone()
-    return record[0]
+def get_symbol_id(symbol):
+    try:
+        connection = DBTools.get_connection()
+        cursor = connection.cursor()
+        query = "select symbolid from Symbol where name ='{}'".format(symbol)
+        cursor.execute(query)
+        record = cursor.fetchone()
+        cursor.close()
+        return record[0]
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        DBTools.return_connection(connection)
 
-conf1 = Configuration()
 Configuration()

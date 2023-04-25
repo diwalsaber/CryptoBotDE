@@ -1,29 +1,15 @@
-from data_collectors.cryptoutils import DBTools, Configuration
+from data_collectors.create_schema import create_schema
+from data_collectors.create_schema import init_symbols
+from data_collectors.history_data_collector_api import download_history_data, download_missing_history_data
+from data_collectors.history_data_collector_zip import unzip_all, load_csv
+from data_collectors.realtime_data_collector import download_realtime_data
 
-
-def init_symbols():
-    try:
-        conf = Configuration.get_instance()
-        connection = DBTools.get_connection()
-        cursor = connection.cursor()
-        for pair_conf in conf.pairs_conf:
-            if exists(cursor, pair_conf.symbol):
-                # Update existing
-                cursor.execute("UPDATE Symbol set Description = '{}' where Name = '{}'"
-                        .format(pair_conf.description, pair_conf.symbol))
-            else:
-                # Create new
-                cursor.execute("INSERT INTO Symbol (SymbolId, Name, Description) VALUES (nextval('seq_symbol'), '{}', '{}')".format(pair_conf.symbol, pair_conf.description))
-        connection.commit()
-    finally:
-        cursor.close()
-        DBTools.return_connection(connection)
-def exists(cur, symbol):
-    query = "select * from Symbol where name ='{}'".format(symbol)
-    cur.execute(query)
-    mobile_records = cur.fetchall()
-    return len(mobile_records)  > 0
-
+#create and init the database schema
+create_schema()
 init_symbols()
-
-
+# download history data
+download_history_data()
+# unzip history data
+unzip_all('data')
+# load the history data into the db history table
+load_csv('data')

@@ -3,6 +3,7 @@ from datetime import date
 from datetime import datetime
 from datetime import timedelta
 
+import psycopg2
 from dateutil import relativedelta
 import requests
 from os.path import exists
@@ -58,7 +59,6 @@ def download_monthly_symbol_data(destination_base_dir, symbol, year, month, inte
             while day <= days_in_month and delta.months <= 2 and delta.years == 0:
                 download_daily_symbol_data(destination_base_dir, symbol, year, month, day, interval)
                 day += 1
-
 
 def download_daily_symbol_data(destination_base_dir, symbol, year, month, day, interval):
     """downloads into destination_dir the daily history data for the given symbol and interval"""
@@ -143,6 +143,8 @@ def load_csv(data_dir):
             if entry.endswith(".csv"):
                 load_csv_in_db(cursor, data_dir, entry)
                 connection.commit()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
     finally:
         cursor.close()
         DBTools.return_connection(connection)
@@ -152,7 +154,7 @@ def load_csv_in_db(cursor, data_dir, filename):
     # Extraire le nom du symbole et l'intervalle à partir du nom de fichier
     symbol, interval = filename.split('-')[:2]
     # Récupérer l'ID du symbole
-    symbolId = cryptoutils.get_symbol_id(cursor, symbol)
+    symbolId = cryptoutils.get_symbol_id(symbol)
     print('DB loading file :',filename)
     cursor.execute("DROP TABLE IF EXISTS TMP")
     cursor.execute("""
@@ -175,6 +177,7 @@ def load_csv_in_db(cursor, data_dir, filename):
     # Ouvrir le fichier CSV et créer un objet reader
     with open(filepath, 'r') as file:
         if '2017' in filename:
+            #the 2017 files have different header
             cursor.copy_expert("COPY TMP (open_time,open_price,high_price,low_price,close_price,base_volume,close_time,quote_volume,number_trades,taker_buy_base,taker_buy_quote) FROM STDIN WITH csv", file)
         else:
             cursor.copy_expert(
@@ -184,9 +187,4 @@ def load_csv_in_db(cursor, data_dir, filename):
                                     (select to_timestamp(open_time/1000),{},open_price,high_price,low_price,
                                     close_price,base_volume,to_timestamp(close_time/1000),quote_volume,
                                     number_trades,taker_buy_base,taker_buy_quote from tmp)""".format(symbolId))
-
-
-download_history_data()
-
-unzip_all('data')
-load_csv('data')
+    cursor.execute("DROP TABLE IF EXISTS TMP")

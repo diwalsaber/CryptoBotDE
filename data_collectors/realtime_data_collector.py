@@ -2,7 +2,7 @@ import csv
 from binance import ThreadedWebsocketManager
 import psycopg2
 
-from data_collectors.cryptoutils import Configuration
+from data_collectors.cryptoutils import Configuration, DBTools, get_symbol_id
 
 api_key = ''
 api_secret = ''
@@ -12,7 +12,6 @@ configurations = {}
 header = ['open_time','open_price','high_price','low_price',
           'close_price','base_volume','close_time','quote_volume',
           'number_trades','taker_buy_base','taker_buy_quote','ignore']
-symbol_id = {"BTCUSDT": 1, "ETHUSDT": 2, "DOGEUSDT": 3}
 
 def handle_socket_message(msg):
     symbol = msg['s']
@@ -46,9 +45,10 @@ def handle_socket_message(msg):
         writer.writerow(line)
         file.flush()
 
-        # format data to insert it in databse (table for real time data)
+        # format data to insert it in database (table for real time data)
+        symbol_id = get_symbol_id(msg['s'])
         line_db = [content['t'],
-                   symbol_id[msg['s']],
+                   symbol_id,
                    content['o'],
                    content['h'],
                    content['l'],
@@ -93,28 +93,17 @@ def insert_data_table(row):
     :return:
     """
     try:
-        conn = psycopg2.connect(
-        host="localhost",
-        database="postgres",
-        user="postgres",
-        password="postgres",
-        port="5432")
-
-        cur = conn.cursor()
-
+        connection = DBTools.get_connection()
+        cur = connection.cursor()
         insert_query = "INSERT INTO CandlestickRealTime VALUES (to_timestamp({}/1000),{},{},{},{},{},{},to_timestamp({}/1000),{},{},{},{})" \
             .format(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11])
-        
         cur.execute(insert_query)
-
         cur.close()
-
-        conn.commit()
+        connection.commit()
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
     finally:
-        if conn is not None:
-            conn.close()
+        DBTools.return_connection(connection)
 
 
-download_realtime_data('config.yml')
+download_realtime_data()
