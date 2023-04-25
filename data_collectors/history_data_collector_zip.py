@@ -170,19 +170,16 @@ def load_csv_in_db(cursor, data_dir, filename):
             number_trades FLOAT,
             taker_buy_base FLOAT,
             taker_buy_quote FLOAT,
-            ignore INT
+            ignore FLOAT
             );
         """)
 
     # Ouvrir le fichier CSV et créer un objet reader
     with open(filepath, 'r') as file:
-        if '2017' in filename:
-            #the 2017 files have different header
-            cursor.copy_expert("COPY TMP (open_time,open_price,high_price,low_price,close_price,base_volume,close_time,quote_volume,number_trades,taker_buy_base,taker_buy_quote) FROM STDIN WITH csv", file)
-        else:
-            cursor.copy_expert(
-                "COPY TMP (open_time,open_price,high_price,low_price,close_price,base_volume,close_time,quote_volume,number_trades,taker_buy_base,taker_buy_quote,ignore) FROM STDIN WITH csv",
-                file)
+        cursor.copy_expert(
+                """COPY TMP (open_time,open_price,high_price,low_price,close_price,base_volume,close_time,
+                quote_volume,number_trades,taker_buy_base,taker_buy_quote,ignore) FROM STDIN WITH csv"""
+                ,file)
     cursor.execute("""INSERT INTO CandleStickHistorical 
                                     (select to_timestamp(open_time/1000),{},open_price,high_price,low_price,
                                     close_price,base_volume,to_timestamp(close_time/1000),quote_volume,
