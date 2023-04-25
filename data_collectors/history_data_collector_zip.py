@@ -2,32 +2,33 @@ import datetime
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
+
+import psycopg2
 from dateutil import relativedelta
 import requests
 from os.path import exists
 import os
 import calendar
 from threading import Thread
-
+import zipfile
 from data_collectors import cryptoutils
+from data_collectors.cryptoutils import DBTools, Configuration
 
 klines_baseurl = 'https://data.binance.vision/data/spot/{}/klines/'
 daily_base_url = klines_baseurl.format('daily')
 monthly_base_url = klines_baseurl.format('monthly')
-destination_data_dir = 'data'
 
-def download_history_data(configuration_file):
+def download_history_data():
     """
         Start downloading the klines history data configured in the configuration_file using the zip files
-        :param configuration_file:
         :return:
         """
-    configurations = cryptoutils.read_configuration(configuration_file)
+    conf = Configuration.get_instance()
     threads = []
-    for configuration in configurations:
+    for pair_conf in conf.pairs_conf:
         thread = Thread(target=download_period_symbol_data,
-                        args=(configuration.destination_dir, configuration.start_datetime, configuration.end_datetime,
-                              configuration.symbol, configuration.interval))
+                        args=(pair_conf.destination_dir, pair_conf.start_datetime, pair_conf.end_datetime,
+                              pair_conf.symbol, pair_conf.interval))
         thread.start()
     # wait the end of all threads
     for thread in threads:
@@ -37,11 +38,10 @@ def download_history_data(configuration_file):
 def download_monthly_symbol_data(destination_base_dir, symbol, year, month, interval):
     """downloads into destination_dir the monthly history data for the given symbol and interval"""
     filename = symbol + "-{}-{}-{:02d}.zip".format(interval, year, month)
-    destination_dir = destination_base_dir + "/" + symbol
-    file_destination_path = destination_dir + "/" + filename
+    file_destination_path = destination_base_dir + "/" + filename
     # create dir if not exists
-    if not exists(destination_dir):
-        os.makedirs(destination_dir)
+    if not exists(destination_base_dir):
+        os.makedirs(destination_base_dir)
     if exists(file_destination_path):
         print("Skip existing file:" + file_destination_path)
     else:
@@ -60,20 +60,18 @@ def download_monthly_symbol_data(destination_base_dir, symbol, year, month, inte
                 download_daily_symbol_data(destination_base_dir, symbol, year, month, day, interval)
                 day += 1
 
-
 def download_daily_symbol_data(destination_base_dir, symbol, year, month, day, interval):
     """downloads into destination_dir the daily history data for the given symbol and interval"""
     filename = symbol + "-{}-{}-{:02d}-{:02d}.zip".format(interval, year, month, day)
-    destination_dir = destination_base_dir+"/"+symbol
-    file_destination_path = destination_dir + "/" + filename
+    file_destination_path = destination_base_dir + "/" + filename
     #create dir if not exists
-    if not exists(destination_dir):
-        os.makedirs(destination_dir)
+    if not exists(destination_base_dir):
+        os.makedirs(destination_base_dir)
     if exists(file_destination_path):
         print("Skip existing file:" + file_destination_path)
     else:
         file_url = daily_base_url + symbol + "/" + interval + "/" + filename
-        download_url(file_url, file_destination_path)
+        status = download_url(file_url, file_destination_path)
 
 
 def download_url(url, save_path, chunk_size=1024):
@@ -127,5 +125,66 @@ def delete_month_daily_files(destination_dir, symbol, year, month, interval):
             print("removed daily file:", file_destination_path)
         day += 1
 
+def unzip_file(file_path, destination_dir):
+    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        zip_ref.extractall(destination_dir)
+def unzip_all(data_dir):
+    entries = os.listdir(data_dir)
+    for entry in entries:
+        if entry.endswith(".zip"):
+            unzip_file(data_dir + '/' + entry, data_dir)
 
-download_history_data('config.yml')
+def load_csv(data_dir):
+    try:
+        connection = DBTools.get_connection()
+        cursor = connection.cursor()
+        entries = os.listdir(data_dir)
+        for entry in entries:
+            if entry.endswith(".csv"):
+                load_csv_in_db(cursor, data_dir, entry)
+                connection.commit()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        cursor.close()
+        DBTools.return_connection(connection)
+
+def load_csv_in_db(cursor, data_dir, filename):
+    filepath = os.path.join(data_dir, filename)
+    # Extraire le nom du symbole et l'intervalle à partir du nom de fichier
+    symbol, interval = filename.split('-')[:2]
+    # Récupérer l'ID du symbole
+    symbolId = cryptoutils.get_symbol_id(symbol)
+    print('DB loading file :',filename)
+    cursor.execute("DROP TABLE IF EXISTS TMP")
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS TMP (
+            open_time bigint,
+            open_price FLOAT,
+            high_price FLOAT,
+            low_price FLOAT,
+            close_price FLOAT,
+            base_volume FLOAT,
+            close_time bigint,
+            quote_volume FLOAT,
+            number_trades FLOAT,
+            taker_buy_base FLOAT,
+            taker_buy_quote FLOAT,
+            ignore INT
+            );
+        """)
+
+    # Ouvrir le fichier CSV et créer un objet reader
+    with open(filepath, 'r') as file:
+        if '2017' in filename:
+            #the 2017 files have different header
+            cursor.copy_expert("COPY TMP (open_time,open_price,high_price,low_price,close_price,base_volume,close_time,quote_volume,number_trades,taker_buy_base,taker_buy_quote) FROM STDIN WITH csv", file)
+        else:
+            cursor.copy_expert(
+                "COPY TMP (open_time,open_price,high_price,low_price,close_price,base_volume,close_time,quote_volume,number_trades,taker_buy_base,taker_buy_quote,ignore) FROM STDIN WITH csv",
+                file)
+    cursor.execute("""INSERT INTO CandleStickHistorical 
+                                    (select to_timestamp(open_time/1000),{},open_price,high_price,low_price,
+                                    close_price,base_volume,to_timestamp(close_time/1000),quote_volume,
+                                    number_trades,taker_buy_base,taker_buy_quote from tmp)""".format(symbolId))
+    cursor.execute("DROP TABLE IF EXISTS TMP")

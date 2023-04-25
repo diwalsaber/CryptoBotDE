@@ -1,4 +1,4 @@
-#Syntax
+# Syntax
 # //list of configurations
 #   - <conf_item>*  // configuration item (any name)
 #      symbol: <symbol>
@@ -6,24 +6,34 @@
 #      history_start_date: <a date> in the format yyyy-mm-dd
 #      history_end_date: <a date> in the format yyyy-mm-dd or 'now' for yesterday date
 #      destination_dir: path   path where to save downloaded data
+Database:
+    instance_name: postgres
+    host: 127.0.0.1
+    port: 5432
+    username: postgres
+    password: postgres
 
-- BTCUSDT:
-    symbol: BTCUSDT
-    interval: 4h
-    history_start_date: 2017-01-01
-    history_end_date: now
-    destination_dir: data
 
-- ETHUSDT:
-    symbol: ETHUSDT
-    interval: 4h
-    history_start_date: 2017-01-01
-    history_end_date: now
-    destination_dir: data
 
-- DOGEUSDT:
-    symbol: DOGEUSDT
-    interval: 4h
-    history_start_date: 2017-01-01
-    history_end_date: now
-    destination_dir: data
+Pairs:
+    - BTCUSDT:
+        symbol: BTCUSDT
+        description: 'BTC: Bitcoin, USDT: TetherUS'
+        interval: 1m
+        history_start_date: 2018-01-01
+        history_end_date: now
+        destination_dir: data
+
+    #- ETHUSDT:
+    #    symbol: ETHUSDT
+    #    interval: 1m
+    #    history_start_date: 2017-01-01
+    #    history_end_date: now
+    #    destination_dir: data
+
+    #- DOGEUSDT:
+    #    symbol: DOGEUSDT
+    #    interval: 1m
+    #    history_start_date: 2017-01-01
+    #    history_end_date: now
+    #    destination_dir: data

@@ -1,0 +1,31 @@
+import pandas as pd
+from binance.client import Client
+
+pairName ="BTCUSDT"
+startDate ="1 Jan, 2017"
+timeInterval = Client.KLINE_INTERVAL_1DAY
+
+klines = Client().get_historical_klines(pairName,timeInterval,startDate)
+#print(klines)
+
+
+df = pd.DataFrame(klines, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'])
+
+# convertissez la colonne 'timestamp' en format de date/heure compréhensible
+df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+df['open'] = pd.to_numeric(df['open'])
+df['high'] = pd.to_numeric(df['high'])
+df['close'] = pd.to_numeric(df['close'])
+df['volume'] = pd.to_numeric(df['volume'])
+df['close_time'] = pd.to_numeric(df['close_time'])
+df['low'] = pd.to_numeric(df['low'])
+df['quote_asset_volume'] = pd.to_numeric(df['quote_asset_volume'])
+
+df= df.set_index(df['timestamp'])
+df.index =pd.to_datetime(df.index,unit='ms')
+del df['timestamp']
+# affichez les 5 premières lignes du DataFrame
+#print(df.head())
+print("Data loaded 100%")
+df
+print (df)
