@@ -1,6 +1,7 @@
-from data_collectors import cryptoutils
 import csv
 from binance import ThreadedWebsocketManager
+
+from data_collectors.cryptoutils import Configuration
 
 api_key = ''
 api_secret = ''
@@ -44,20 +45,19 @@ def handle_socket_message(msg):
         file.flush()
 
 
-def download_realtime_data(configuration_file):
+def download_realtime_data():
     """
     Store the klines data coming from the websocket
-    :param configuration_file:
     :return:
     """
-    confs = cryptoutils.read_configuration(configuration_file)
+    conf = Configuration.get_instance()
     twm = ThreadedWebsocketManager(api_key=api_key, api_secret=api_secret)
     # start is required to initialise its internal loop
     twm.start()
-    for configuration in confs:
+    for pair_conf in conf.pairs_conf:
         #save the configuration in the dict and start the socket
-        configurations[configuration.symbol+'_'+configuration.interval] = configuration
-        twm.start_kline_socket(callback=handle_socket_message, symbol=configuration.symbol, interval=configuration.interval)
+        configurations[pair_conf.symbol+'_'+pair_conf.interval] = pair_conf
+        twm.start_kline_socket(callback=handle_socket_message, symbol=pair_conf.symbol, interval=pair_conf.interval)
 
     twm.join()
 
@@ -69,4 +69,4 @@ def make_filename(symbol, interval):
     return '{}/{}_{}_realtime.csv'.format(configurations[symbol+'_'+interval].destination_dir, symbol, interval)
 
 
-download_realtime_data('config.yml')
+download_realtime_data()
