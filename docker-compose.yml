@@ -1,6 +1,6 @@
 services:
   postgres:
-    container_name: postgres
+    container_name: CryptoBot
     image: timescale/timescaledb:latest-pg15
     restart: always
     environment:
