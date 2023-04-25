@@ -95,7 +95,7 @@ def download_missing_symbol_data(destination_data_dir, symbol, interval):
                     number_trades FLOAT,
                     taker_buy_base FLOAT,
                     taker_buy_quote FLOAT,
-                    ignore INT
+                    ignore FLOAT
                     );
                 """)
         with open((destination_data_dir+'/{}_{}.csv').format(symbol, interval), "r") as file:
