@@ -7,7 +7,7 @@ import yaml
 from yaml.loader import SafeLoader
 from os.path import exists
 
-configuration_file = 'config.yml'
+configuration_file = 'data_collectors/config.yml'
 class Singleton(type):
     _instances = {}
     def __call__(cls, *args, **kwargs):

@@ -29,6 +29,7 @@ def download_history_data():
         thread = Thread(target=download_period_symbol_data,
                         args=(pair_conf.destination_dir, pair_conf.start_datetime, pair_conf.end_datetime,
                               pair_conf.symbol, pair_conf.interval))
+        threads.append(thread)
         thread.start()
     # wait the end of all threads
     for thread in threads:
@@ -92,6 +93,8 @@ def download_period_symbol_data(destination_dir, start_datetime, end_datetime, s
     today = datetime.today()
     if end_datetime > today:
         end_datetime = today
+    if not exists(destination_dir):
+        os.makedirs(destination_dir)
     while start_datetime <= end_datetime:
         days_in_month = calendar.monthrange(start_datetime.year, start_datetime.month)[1]
         end_of_month_date = datetime(start_datetime.year, start_datetime.month, days_in_month)
@@ -128,13 +131,19 @@ def delete_month_daily_files(destination_dir, symbol, year, month, interval):
 def unzip_file(file_path, destination_dir):
     with zipfile.ZipFile(file_path, 'r') as zip_ref:
         zip_ref.extractall(destination_dir)
-def unzip_all(data_dir):
+def unzip_all():
+    for conf in Configuration.get_instance().pairs_conf:
+        unzip_files_in_dir(conf.destination_dir)
+def unzip_files_in_dir(data_dir):
     entries = os.listdir(data_dir)
     for entry in entries:
         if entry.endswith(".zip"):
             unzip_file(data_dir + '/' + entry, data_dir)
 
-def load_csv(data_dir):
+def load_csv():
+    for conf in Configuration.get_instance().pairs_conf:
+        load_all_csv_in_dir(conf.destination_dir)
+def load_all_csv_in_dir(data_dir):
     try:
         connection = DBTools.get_connection()
         cursor = connection.cursor()

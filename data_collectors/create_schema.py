@@ -1,6 +1,7 @@
 import psycopg2
 
-from data_collectors.cryptoutils import DBTools
+from data_collectors.cryptoutils import DBTools, Configuration
+
 
 def create_schema():
     try:
