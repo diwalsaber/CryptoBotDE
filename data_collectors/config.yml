@@ -19,7 +19,7 @@ Pairs:
     - BTCUSDT:
         symbol: BTCUSDT
         description: 'BTC: Bitcoin, USDT: TetherUS'
-        interval: 1m
+        interval: 1d
         history_start_date: 2017-08-01
         history_end_date: now
         destination_dir: data
