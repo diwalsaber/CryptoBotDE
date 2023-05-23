@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Header
+from fastapi import FastAPI, Header, HTTPException
 import joblib
 from tensorflow.keras.models import load_model
 from pydantic import BaseModel
 from typing import Optional, List
+import asyncio
 import numpy as np
 import pandas as pd
 import psycopg2 as pg
@@ -106,6 +107,8 @@ df = load_data_from_Postgres(sql_query)
 
 
 class Input(BaseModel):
+    """a list of float values used for the prediction
+    """
     data: List[float]
 
 api = FastAPI(
@@ -114,8 +117,18 @@ api = FastAPI(
     version="1.0.0")
 
 
-@api.post('/predict2', name='Get the prediction with entering 3 last values')
-def post_predict2(input: Input):
+@api.get('/', name='Check if the API is operational')
+async def get_alive():
+    """returns alive
+    """
+    return {
+        'welcome': 'to CryptoBot API'
+    }
+
+@api.post('/predict2', name='Get the prediction with entering 3 values')
+async def post_predict2(input: Input):
+    """Get the prediction of BTC/USDT according to 3 values in the list
+    """
     prediction = ""
     sequence = pd.DataFrame(input.data).values.reshape(-1, 1).astype('float32')
 
@@ -124,15 +137,23 @@ def post_predict2(input: Input):
         sequence_scaled_reshaped = sequence_scaled.reshape(1, day, 1)
         prediction = model.predict(sequence_scaled_reshaped)
         prediction = scaler.inverse_transform(prediction)
-        prediction = prediction.flatten()[0]
+        # convert numpy.float32 to native python float
+        prediction = prediction.flatten()[0].item()
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail='List size incorrect'
+        )
     
     return {
-        'Sequence':str(sequence.flatten().tolist()),
-        'Prediction':str(prediction) 
+        'Sequence': sequence.flatten().tolist(),
+        'Prediction': prediction 
     }
 
-@api.get('/predict', name='Get the prediction with the last values on database')
-def get_predict():
+@api.get('/predict', name='Get the prediction with the last values on the database')
+async def get_predict():
+    """Get the prediction for the next day for BTC/USDT with the last three values on the database
+    """
     date_sequence = df['open_time'].iloc[-day:].values.tolist()
     date_sequence = [datetime.utcfromtimestamp(x/1000000000).strftime('%Y-%m-%d') for x in date_sequence]
     
@@ -145,33 +166,67 @@ def get_predict():
     sequence_scaled_reshaped = sequence_scaled.reshape(1,day,1)
     prediction = model.predict(sequence_scaled_reshaped)
     prediction = scaler.inverse_transform(prediction)
-    prediction = prediction.flatten()[0]
+    # convert numpy.float32 to native python float
+    prediction = prediction.flatten()[0].item()
+
     
     return {
-        'Date Sequence':str(date_sequence),    
-        'Sequence':str(sequence.flatten().tolist()),
-        'Date Prediction':str(date_prediction),
-        'Prediction':str(prediction)
+        'date_sequence': date_sequence,
+        'sequence': sequence.flatten().tolist(),
+        'date_prediction': date_prediction,
+        'prediction': prediction
+    }
+
+@api.get('/values', name='Get the the three last values on the database')
+async def get_values():
+    """Get the the last three values on the database for BTC/USDT
+    """
+    date_sequence = df['open_time'].iloc[-day:].values.tolist()
+    date_sequence = [datetime.utcfromtimestamp(x/1000000000).strftime('%Y-%m-%d') for x in date_sequence]
+
+    sequence = df['close_price'].iloc[-day:].values.reshape(-1,1)
+
+    return {
+        'date_sequence': date_sequence,
+        'sequence': sequence.flatten().tolist(),
     }
 
 @api.get('/score', name='Get the RMSE score of the model')
-def get_score():
-    X_train, X_test, y_train, y_test, train_generator, test_generator, scaler = preprocess_data(df, 'close_price', 'close_price', lookback=day, test_size=0.2, batch_size=1)
+async def get_score():
+    """Get RMSE score for train and test data
+    """
+    # Compute test_size
+    nb_records_X_train = 1673 # number of records used for the training of the model
+    test_size = (len(df)-nb_records_X_train)/len(df)
+    
+    X_train, X_test, y_train, y_test, train_generator, test_generator, scaler = preprocess_data(df, 'close_price', 'close_price', lookback=day, test_size=test_size, batch_size=1)
     
     # Get the model predictions
+    y_train_pred = model.predict(train_generator)
     y_test_pred = model.predict(test_generator)
     
     # Scale the data
+    y_train_pred_rescaled = scaler.inverse_transform(y_train_pred)
     y_test_pred_rescaled = scaler.inverse_transform(y_test_pred)
+    y_train_rescaled      = scaler.inverse_transform(y_train.reshape(-1, 1))
     y_test_rescaled      = scaler.inverse_transform(y_test.reshape(-1, 1))
-    rmse = evaluate_model(y_test_rescaled, y_test_pred_rescaled, lookback=day)
+
+    rmse_train = evaluate_model(y_train_rescaled, y_train_pred_rescaled, lookback=day)
+    rmse_test = evaluate_model(y_test_rescaled, y_test_pred_rescaled, lookback=day)
+    # convert numpy.float32 to native python float
+    rmse_train = rmse_train.item()
+    rmse_test = rmse_test.item()
+
     
     return {
-        'RMSE score on test data': str(rmse)
+        'RMSE_score_train_data': rmse_train,
+        'RMSE_score_test_data': rmse_test
     }
 
 @api.get('/model_summary', name='Get the model summary')
-def get_model():
+async def get_model():
+    """Get information about the model (layers, lookback)
+    """
     #stringlist = []
     #model.summary(print_fn=lambda x: stringlist.append(x))
     #summary = "\n".join(stringlist)
@@ -180,13 +235,15 @@ def get_model():
     for layer in model.layers: summary.append(layer.get_config())
     
     return {
-        'model layers': summary,
-        'lookback day': day
+        'model_layers': summary,
+        'lookback_day': day
     }
 
 
 @api.post("/predict", name='Get the prediction with entering a list of values')
-def post_predict(input: Input):
+async def post_predict(input: Input):
+    """Get the prediction for BTC/USDT with a list of values
+    """
     # Convertir les données en DataFrame
     data = pd.DataFrame(input.data).values.reshape(-1, 1).astype('float32')
 
@@ -208,8 +265,14 @@ def post_predict(input: Input):
         data_scaled_reshaped = data_scaled[-day:].reshape(1, day, 1)
         prediction = model.predict(data_scaled_reshaped)
         prediction = scaler.inverse_transform(prediction)
-        prediction_list.append(prediction.flatten()[0])
+        # convert numpy.float32 to native python float
+        prediction_list.append(prediction.flatten()[0].item())
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail='List size incorrect'
+        )
 
     return {
-            'prediction': str(prediction_list)
+            'prediction': prediction_list
     }
