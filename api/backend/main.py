@@ -89,19 +89,155 @@ def evaluate_model(y_test, y_test_pred, lookback=10):
     """
     return np.sqrt(mean_squared_error(y_test[: - lookback], y_test_pred))
 
+# Fonction pour mettre à jour le dataframe pour les affichages
+def update_dataframe(interval = "1 day", mov_avg = 30):
+    """Retrieve a new dataframe according to the interval and compute moving average (new SQL request)
+
+    Args:
+        interval: the interval between 2 records (x days, x weeks, x months)
+        mov_avg: value used to compute the moving average on the data close_price
+
+    Returns:
+        dataframe: new dataframe according to the interval and compute moving average
+    """
+    sql_query = " \
+      SELECT a.*, AVG(close_price) OVER(ORDER BY open_time ROWS BETWEEN {} PRECEDING AND CURRENT ROW) AS moving_average \
+      FROM \
+        (SELECT time_bucket('{}', opentime) AS open_time, \
+                first(openprice, opentime) AS open_price, \
+                max(highprice) AS high_price, \
+                min(lowprice) AS low_price, \
+                last(closeprice, closetime) AS close_price, \
+                sum(basevolume) AS base_volume, \
+                max(closetime) AS close_time \
+        FROM candlestickhistorical \
+        GROUP BY open_time \
+        ORDER BY open_time \
+        ) AS a; \
+    ".format(mov_avg-1, interval)
+    df = load_data_from_Postgres(sql_query)
+
+    return df
+
+def predict(input_data: List[float], nb_future = 1, input_last_date = "", last_values = True):
+    """Predict the next values in the future
+
+    Args:
+        input_data: the list of values used for the prediction
+        nb_future: number of next interval predictions
+        last_values: True means prediction done on the last values of the list
+                     False means prediction done on the entire list
+
+    Returns:
+        a list of predictions
+    """
+    # Convertir les donnes en dataframe
+    data = pd.DataFrame(input_data).values.reshape(-1, 1).astype('float32')
+
+    # Normaliser les données
+    data_scaled = scaler.transform(data)
+
+    # liste pour les predictions
+    prediction_list = []
+
+    # liste date pour predictions
+    date_prediction_list = []
+    if input_last_date != "":
+        date_prediction = input_last_date
+        # date prediction pour les precedentes sequences n'incluant pas la dernière séquence
+        if (len(data) > day) and (last_values == False):
+            date_prediction = datetime.strptime(date_prediction, "%Y-%m-%d")
+            date_prediction = date_prediction - timedelta(days=len(data)-day)
+            date_prediction = date_prediction.strftime('%Y-%m-%d')
+            for i in range(len(data)-day):
+                date_prediction = datetime.strptime(date_prediction, "%Y-%m-%d")
+                date_prediction = date_prediction + timedelta(days=1)
+                date_prediction = date_prediction.strftime('%Y-%m-%d')
+                date_prediction_list.append(date_prediction)
+        # date prediction pour la dernière sequence dans le futur
+        for i in range(nb_future):
+            date_prediction = datetime.strptime(date_prediction, "%Y-%m-%d")
+            date_prediction = date_prediction + timedelta(days=1)
+            date_prediction = date_prediction.strftime('%Y-%m-%d')
+            date_prediction_list.append(date_prediction)
+
+    # On fait la prediction si la liste contient au moins le nombre de loopbak pour les données
+    if len(data) >= day:
+        # Prediction pour les sequences n'incluant pas la dernière séquence
+        if (len(data) > day) and (last_values == False):
+            generator = TimeseriesGenerator(data_scaled, data_scaled, length=day, batch_size=1, stride=1)
+            prediction = model.predict(generator)
+            prediction = scaler.inverse_transform(prediction)
+            prediction_list = prediction.flatten().tolist()
+
+        # Prédiction pour la derniere sequence avec boucle pour la prediction dans le future 
+        # Prediction de type 'Recursive Multi-step Forecast' (utilisation des dernières predictions pour la prochaine prediction)
+        while nb_future >=1 :
+
+            # Récupération de la dernière sequence (comprenant les dernières prédictions)
+            data_scaled = data_scaled[-day:]
+            # Pour info pour ne pas afficher des valeurs normalisées
+            #data_unscaled = scaler.inverse_transform(data_scaled)
+            #print("\nSequence: \n", data_unscaled)
+            data_scaled_reshaped = data_scaled.reshape(1, day, 1)
+
+            prediction = model.predict(data_scaled_reshaped)
+            prediction_unscaled = scaler.inverse_transform(prediction)
+            # Convertir le type numpy.float32 en type native python float
+            prediction_unscaled = prediction_unscaled.flatten()[0].item()
+            prediction_list.append(prediction_unscaled)
+            #print("Prediction: ", prediction_unscaled)
+
+            # Transforme data de type np.array en type list afin de rajouter la dernière prediction
+            data_scaled = data_scaled.flatten().tolist()
+            # data contient les données normalisées
+            prediction = prediction.flatten()[0].item()
+            data_scaled.append(prediction)
+            # Transforme la liste en np.array (array de 1 colonne), format utiliser pour la prédiction
+            data_scaled = np.array(data_scaled, dtype=float).reshape(-1,1)
+      
+            nb_future -= 1
+
+    return prediction_list, date_prediction_list
+
 
 
 scaler = joblib.load('scaler.job')
-model = load_model('lstm_day3.h5')
-day = 3
+#model = load_model('lstm_day3.h5')
+#day = 3
+model = load_model('lstm_day9.h5')
+day = 9
 
-sql_query = """
-    SELECT time_bucket('1 day', opentime) AS open_time,
-           last(closeprice, closetime) AS close_price
-    FROM candlestickhistorical
-    GROUP BY open_time
-    ORDER BY open_time;
-"""
+#sql_query = """
+#    SELECT time_bucket('1 day', opentime) AS open_time,
+#           last(closeprice, closetime) AS close_price,
+#           first(openprice, opentime) AS open_price,
+#           max(highprice) AS high_price,
+#           min(lowprice) AS low_price,
+#           sum(basevolume) AS volume,
+#           max(closetime) AS close_time
+#    FROM candlestickhistorical
+#    GROUP BY open_time
+#    ORDER BY open_time;
+#"""
+
+interval = "1 day"
+mov_avg = 30
+sql_query = " \
+    SELECT a.*, AVG(close_price) OVER(ORDER BY open_time ROWS BETWEEN {} PRECEDING AND CURRENT ROW) AS moving_average \
+    FROM \
+        (SELECT time_bucket('{}', opentime) AS open_time, \
+            first(openprice, opentime) AS open_price, \
+            max(highprice) AS high_price, \
+            min(lowprice) AS low_price, \
+            last(closeprice, closetime) AS close_price, \
+            sum(basevolume) AS base_volume, \
+            max(closetime) AS close_time \
+        FROM candlestickhistorical \
+        GROUP BY open_time \
+        ORDER BY open_time \
+    ) AS a; \
+    ".format(mov_avg-1, interval)
 
 df = load_data_from_Postgres(sql_query)
 
@@ -110,6 +246,7 @@ class Input(BaseModel):
     """a list of float values used for the prediction
     """
     data: List[float]
+    date: Optional[str] = ""
 
 api = FastAPI(
     title="API CryptoBot",
@@ -177,9 +314,9 @@ async def get_predict():
         'prediction': prediction
     }
 
-@api.get('/values', name='Get the the three last values on the database')
+@api.get('/values', name='Get the last sequence values on the database')
 async def get_values():
-    """Get the the last three values on the database for BTC/USDT
+    """Get the the last sequence values on the database for BTC/USDT used for the prediction, the number of values in the list depends on the model
     """
     date_sequence = df['open_time'].iloc[-day:].values.tolist()
     date_sequence = [datetime.utcfromtimestamp(x/1000000000).strftime('%Y-%m-%d') for x in date_sequence]
@@ -187,10 +324,41 @@ async def get_values():
     sequence = df['close_price'].iloc[-day:].values.reshape(-1,1)
 
     return {
-        'date_sequence': date_sequence,
-        'sequence': sequence.flatten().tolist(),
+        'close_time': date_sequence,
+        'close_price': sequence.flatten().tolist(),
     }
 
+@api.get('/data', name='Get the data on the database')
+async def get_data(nb_records: Optional[int]=day, interval: Optional[str]="1 day", mov_avg: Optional[int]=30):
+    """Get the data (open price, open time, close price, high price, close price, low price, volume) on the database for BTC/USDT
+    """
+
+    df = update_dataframe(interval, mov_avg)
+    if nb_records > len(df):
+        nb_records = len(df)
+
+
+    open_time = df['open_time'].iloc[-nb_records:].values.reshape(-1,1)
+    close_time = df['close_time'].iloc[-nb_records:].values.reshape(-1,1)
+    close_price = df['close_price'].iloc[-nb_records:].values.reshape(-1,1)
+    open_price = df['open_price'].iloc[-nb_records:].values.reshape(-1,1)
+    high_price = df['high_price'].iloc[-nb_records:].values.reshape(-1,1)
+    low_price = df['low_price'].iloc[-nb_records:].values.reshape(-1,1)
+    base_volume = df['base_volume'].iloc[-nb_records:].values.reshape(-1,1)
+    moving_average = df['moving_average'].iloc[-nb_records:].values.reshape(-1,1)
+
+    return {
+        'open_time': open_time.flatten().tolist(),
+        'close_time': close_time.flatten().tolist(),
+        'close_price': close_price.flatten().tolist(),
+        'open_price': open_price.flatten().tolist(),
+        'high_price': high_price.flatten().tolist(),
+        'low_price': low_price.flatten().tolist(),
+        'base_volume': base_volume.flatten().tolist(),
+        'moving_average': moving_average.flatten().tolist()
+    }
+
+    
 @api.get('/score', name='Get the RMSE score of the model')
 async def get_score():
     """Get RMSE score for train and test data
@@ -276,3 +444,25 @@ async def post_predict(input: Input):
     return {
             'prediction': prediction_list
     }
+
+@api.post("/predict3", name='Get the predictions of the next days with entering a list of values')
+async def post_predict3(input: Input, nb_future: Optional[int]=1, last_values: Optional[bool]=True):
+    """Get the predictions of the next days for BTC/USDT with a list of values
+    """
+    prediction_list = []
+    date_prediction_list = []
+
+    # prediction on a list of x values at least (x=loopback, depending of the model used for the prediction)
+    if len(input.data) >= day:
+        prediction_list, date_prediction_list = predict(input.data, nb_future, input.date, last_values)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail='List size incorrect'
+        )
+
+    return {
+            'date_prediction': date_prediction_list,
+            'prediction': prediction_list
+    }
+    
