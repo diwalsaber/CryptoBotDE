@@ -85,13 +85,14 @@ st.set_page_config(page_title="Affichage cours crypto", page_icon="📈")
 st.markdown("# Affichage du cours de la crypto BTC/USDT 📈")
 st.sidebar.success("Page: Affichage Cours")
 st.write(
-    """Affichage du cours pour la crypto BTC/USDT avec un tableau contenant les données journaliers
-    et des graphiques pour voir l'évolution du cours.
-    Ces graphiques affichés sont paramètrables.
-    """
+    "Affichage du cours pour la crypto BTC/USDT avec un tableau contenant les données journaliers \
+    et un graphique pour voir l'évolution du cours, ainsi que la moyenne mobile. \
+    \nLe graphique affiché est paramètrable.\
+    "
 )
 
 st.write("")
+st.write("**Tableau:**")
 
 # Chargement du dataframe
 df = update_dataframe()
@@ -118,21 +119,23 @@ option_interval = st.sidebar.selectbox(
 st.sidebar.write("")
 
 #st.sidebar.write("Veuillez choisir la valeur de la moyenne mobile à afficher:")
-option_avg = st.sidebar.slider("Valeur moyenne mobile:", 1, 100, 10)
+option_avg = st.sidebar.slider("Valeur moyenne mobile:", 1, 120, 30)
 
-plot_spot1 = st.empty()
+st.write("")
+st.write("**Graphique:**")
+#plot_spot1 = st.empty()
 plot_spot2 = st.empty()
 
 if st.sidebar.button('Affichage graphique'):
     df = update_dataframe(option_interval, option_avg, option_period)
-    with plot_spot1:
-        fig1 = px.line(df, x='open_time', y=['close_price', 'moving_average'], title='Prix BTC/USDT avec moyenne mobile')
-        fig1.update_layout(width=800, height=400, xaxis=dict(title_text=""), yaxis=dict(title_text="prix USDT"), title={'x': 0.5, 'xanchor': 'center'})
-        st.plotly_chart(fig1)
+    #with plot_spot1:
+    #    fig1 = px.line(df, x='open_time', y=['close_price', 'moving_average'], title='Prix BTC/USDT avec moyenne mobile')
+    #    fig1.update_layout(width=800, height=400, xaxis=dict(title_text=""), yaxis=dict(title_text="prix USDT"), title={'x': 0.5, 'xanchor': 'center'})
+    #    st.plotly_chart(fig1)
     with plot_spot2:
         fig2 = make_subplots(
                     rows=2, cols=1,
-                    subplot_titles=("Prix BTC/USDT (format bougie)", "Volume BTC/USDT"),
+                    subplot_titles=("Prix BTC/USDT", "Volume BTC/USDT"),
                     shared_xaxes=True,
                     vertical_spacing =0.3)# tune this value until the two charts don't overlap
         fig2.add_trace(go.Candlestick(
@@ -143,7 +146,10 @@ if st.sidebar.button('Affichage graphique'):
                         low=df['low_price'],
                         close=df['close_price']), row=1, col=1)
         fig2.add_trace(go.Bar(name = 'Volume', x=df['open_time'], y=df['base_volume']), row=2, col=1)
-        fig2.update_layout(width=800, height=800)
+        fig2.update_layout(width=800, height=1000)
+        ema_trace = go.Scatter(x=df['open_time'], y=df['moving_average'], 
+                               mode='lines', name='Moyenne mobile', line={'color': 'royalblue', 'width': 3})
+        fig2.add_trace(ema_trace)
         st.plotly_chart(fig2)
 
 

@@ -14,17 +14,17 @@ def make_prediction(data, date, nb_future):
     return response.json()
 
 
-st.set_page_config(page_title="Prediction Cours", page_icon="💻")
+st.set_page_config(page_title="Prediction Cours", page_icon="🔮")
 
-st.markdown("# Prediction de la crypto BTC/USDT 💻")
+st.markdown("# Prediction du cours BTC/USDT 🔮")
 st.sidebar.success("Page: Prediction Cours")
 st.write(
-    """Cette page affiche une prédiction de la valeur du BTC/USDT.
-    On peut choisir le nombre de jours pour la prediction dans le futur"""
+    "Cette page affiche une prédiction de la valeur du BTC/USDT. \
+    \nOn peut choisir le nombre de jours pour la prediction dans le futur."
 )
 
 st.write("")
-st.write("Dernières données BTC/USDT utilisées pour la prédiction:")
+st.write("**Dernières données BTC/USDT utilisées pour la prédiction:**")
 # Récupération des 3 dernières valeurs du BTC/USDT via API
 response = requests.get(BACKEND + '/values')
 data = pd.DataFrame(response.json())
@@ -35,11 +35,10 @@ st.write(data)
 st.write("")
 plot_spot1 = st.empty()
 plot_spot2 = st.empty()
-st.write("")
 plot_spot3 = st.empty()
 
 st.sidebar.write("")
-option_nb_future = st.sidebar.slider("Nombre de jours pour la prediction dans le futur:", 1, 3, 1)
+option_nb_future = st.sidebar.slider("Nombre de jours à prédire:", 1, 3, 1)
 
 st.sidebar.write("")
 # Bouton pour faire une prédiction
@@ -47,7 +46,7 @@ if st.sidebar.button('Prédire'):
     prediction = make_prediction(response.json()['close_price'], response.json()['close_time'][-1], option_nb_future)
     data_prediction = pd.DataFrame(prediction)
     with plot_spot1:
-        st.write("Prédiction:")
+        st.write("**Prédiction:**")
     with plot_spot2:
         st.write(data_prediction)
     with plot_spot3:
