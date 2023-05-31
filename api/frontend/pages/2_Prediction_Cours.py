@@ -20,8 +20,8 @@ st.markdown("# Prediction du cours BTC/USDT 🔮")
 st.sidebar.success("Page: Prediction Cours")
 st.write(
     "Cette page affiche une prédiction de la valeur du BTC/USDT. \
-    \nOn peut choisir le nombre de jours pour la prediction dans le futur."
-)
+    \nAvec le score RMSE du modèle indiquant l'erreur moyenne sur la prédiction. \
+    \nOn peut choisir le nombre de jours pour la prediction dans le futur.")
 
 st.write("")
 st.write("**Dernières données BTC/USDT utilisées pour la prédiction:**")
@@ -36,6 +36,7 @@ st.write("")
 plot_spot1 = st.empty()
 plot_spot2 = st.empty()
 plot_spot3 = st.empty()
+plot_spot4 = st.empty()
 
 st.sidebar.write("")
 option_nb_future = st.sidebar.slider("Nombre de jours à prédire:", 1, 3, 1)
@@ -50,6 +51,13 @@ if st.sidebar.button('Prédire'):
     with plot_spot2:
         st.write(data_prediction)
     with plot_spot3:
+        response = requests.get(BACKEND + '/score')
+        score_train = response.json()['RMSE_score_train_data']
+        score_test = response.json()['RMSE_score_test_data']
+        st.write("\n**Score RMSE du modèle:** \
+                \nScore RMSE sur le jeux d'entrainement: {} \
+                \nScore RMSE sur le jeux de test: {}".format(score_train, score_test))
+    with plot_spot4:
         current_value = data['close_price'].iloc[-1]
         prediction = data_prediction['prediction'].iloc[0]
         current_value_80 = current_value*0.8
