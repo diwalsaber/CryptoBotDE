@@ -17,7 +17,7 @@ st.markdown(
     afin d'aider pour une décision d'achat ou non.\n
     Les données du cours de la crypto sont récoltées sur la plateforme Binance,
     et sont ensuite stockées dans une base de données SQL.\n
-    La prédiction se fera à l'aide un algo de Machine Learning.\n
+    La prédiction se fera via un algo de Deep Learning, algo LSTM.\n
     Les données affichées sur ces pages proviennent d'une API qui a été faite dans le cadre de ce projet.
     ### Projet Datascientest
     ### Equipe
