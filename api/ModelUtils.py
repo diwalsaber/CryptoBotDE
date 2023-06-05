@@ -329,3 +329,33 @@ def load_prediction_data(model_id: int):
             )
     except Exception as e:
         print(e)
+
+
+
+def get_moving_data(mov_avg:int, interval:str, nb_records:int):
+    """Retrieve a new dataframe according to the interval and compute moving average (new SQL request)
+
+        Args:
+            interval: the interval between 2 records (x days, x weeks, x months)
+            mov_avg: value used to compute the moving average on the data close_price
+
+        Returns:
+            dataframe: new dataframe according to the interval and compute moving average
+        """
+    sql_query = f""" 
+          SELECT a.*, AVG(close_price) OVER(ORDER BY open_time ROWS BETWEEN {mov_avg - 1} PRECEDING AND CURRENT ROW) AS moving_average 
+          FROM 
+            (SELECT time_bucket('{interval}', opentime) AS open_time, 
+                    first(openprice, opentime) AS open_price, 
+                    max(highprice) AS high_price, 
+                    min(lowprice) AS low_price, 
+                    last(closeprice, closetime) AS close_price, 
+                    sum(basevolume) AS base_volume, 
+                    max(closetime) AS close_time 
+            FROM candlestickhistorical 
+            GROUP BY open_time 
+            ORDER BY open_time  limit {nb_records*2}
+            ) AS a limit {nb_records}; """
+    df = load_data_from_Postgres(sql_query)
+
+    return df

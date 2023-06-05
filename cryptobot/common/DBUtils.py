@@ -347,3 +347,4 @@ def get_max_start_date(symbolid:int, interval:str):
             return None
     finally:
         DBConnector.return_data_db_connection(connection)
+

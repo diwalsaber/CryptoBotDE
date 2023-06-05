@@ -1,4 +1,5 @@
 import datetime
+from typing import Optional
 
 from fastapi import FastAPI, status, HTTPException, Depends
 from keras.preprocessing.sequence import TimeseriesGenerator
@@ -40,7 +41,6 @@ api = FastAPI(
     }
 ]
 )
-api.add_middleware(CProfileMiddleware, enable=True, server_app = api, filename='output.pstats', strip_dirs = False, sort_by='cumulative')
 
 
 @api.get('/', summary="Welcome Page", response_class=HTMLResponse, tags=['general'])
@@ -225,3 +225,34 @@ async def start_history_download(config_id:int, user: UserAuth = Depends(is_admi
         raise HTTPException(
             status_code=500, detail=f"Error starting data download for config_id:{config_id}"
         )
+
+
+@api.get('/data', name='Get the data on the database')
+async def get_data(nb_records: Optional[int]=3, interval: Optional[str]="1 day", mov_avg: Optional[int]=30, user: UserAuth = Depends(get_current_user)):
+    """Get the data (open price, open time, close price, high price, close price, low price, volume) on the database for BTC/USDT
+    """
+
+    df = ModelUtils.get_moving_data(mov_avg,interval, nb_records)
+    if nb_records > len(df):
+        nb_records = len(df)
+
+
+    open_time = df['open_time'].iloc[-nb_records:].values.reshape(-1,1)
+    close_time = df['close_time'].iloc[-nb_records:].values.reshape(-1,1)
+    close_price = df['close_price'].iloc[-nb_records:].values.reshape(-1,1)
+    open_price = df['open_price'].iloc[-nb_records:].values.reshape(-1,1)
+    high_price = df['high_price'].iloc[-nb_records:].values.reshape(-1,1)
+    low_price = df['low_price'].iloc[-nb_records:].values.reshape(-1,1)
+    base_volume = df['base_volume'].iloc[-nb_records:].values.reshape(-1,1)
+    moving_average = df['moving_average'].iloc[-nb_records:].values.reshape(-1,1)
+
+    return {
+        'open_time': open_time.flatten().tolist(),
+        'close_time': close_time.flatten().tolist(),
+        'close_price': close_price.flatten().tolist(),
+        'open_price': open_price.flatten().tolist(),
+        'high_price': high_price.flatten().tolist(),
+        'low_price': low_price.flatten().tolist(),
+        'base_volume': base_volume.flatten().tolist(),
+        'moving_average': moving_average.flatten().tolist()
+    }
