@@ -1,11 +1,11 @@
 import psycopg2
 
-from data_collectors.cryptoutils import DBTools
+from cryptobot.common.cryptoutils import DBConnector
 
 
 def copy_to_history():
     try:
-        connection = DBTools.get_connection()
+        connection = DBConnector.get_data_db_connection()
         cursor = connection.cursor()
         #copy real time data into history table
         cursor.execute("""INSERT INTO CandleStickHistorical SELECT * from CandlestickRealTime 
@@ -17,6 +17,6 @@ def copy_to_history():
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
     finally:
-        DBTools.return_connection(connection)
+        DBConnector.return_data_db_connection(connection)
 
 copy_to_history()

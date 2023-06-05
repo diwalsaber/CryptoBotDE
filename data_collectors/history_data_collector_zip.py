@@ -11,8 +11,10 @@ import os
 import calendar
 from threading import Thread
 import zipfile
-from data_collectors import cryptoutils
-from data_collectors.cryptoutils import DBTools, Configuration
+
+from cryptobot.common.DBUtils import is_loaded_csv, add_loaded_csv
+from cryptobot.common import cryptoutils, DBUtils
+from cryptobot.common.cryptoutils import DBConnector, Configuration
 
 klines_baseurl = 'https://data.binance.vision/data/spot/{}/klines/'
 daily_base_url = klines_baseurl.format('daily')
@@ -23,12 +25,12 @@ def download_history_data():
         Start downloading the klines history data configured in the configuration_file using the zip files
         :return:
         """
-    conf = Configuration.get_instance()
     threads = []
-    for pair_conf in conf.pairs_conf:
+    for pair_conf in DBUtils.get_history_configs():
+        print(pair_conf['startdate'])
         thread = Thread(target=download_period_symbol_data,
-                        args=(pair_conf.destination_dir, pair_conf.start_datetime, pair_conf.end_datetime,
-                              pair_conf.symbol, pair_conf.interval))
+                        args=(pair_conf['dir'], pair_conf['startdate'], datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days = 1),
+                              pair_conf['symbol'], pair_conf['interval']))
         threads.append(thread)
         thread.start()
     # wait the end of all threads
@@ -77,21 +79,24 @@ def download_daily_symbol_data(destination_base_dir, symbol, year, month, day, i
 
 def download_url(url, save_path, chunk_size=1024):
     """downloads into destination_dir the file in the given url"""
-    print(url)
-    r = requests.get(url, stream=True)
-    if r.status_code == 200:
-        with open(save_path, 'wb') as fd:
-            for chunk in r.iter_content(chunk_size=chunk_size):
-                fd.write(chunk)
-    else:
-        print("File not found:" + url)
-    return r.status_code
+    print(f'downloading {url}')
+    try:
+        r = requests.get(url, stream=True)
+        if r.status_code == 200:
+            with open(save_path, 'wb') as fd:
+                for chunk in r.iter_content(chunk_size=chunk_size):
+                    fd.write(chunk)
+        else:
+            print(f"File not found: {url}")
+        return r.status_code
+    except Exception as e:
+        print(f'Error dowloading {url}')
 
 
-def download_period_symbol_data(destination_dir, start_datetime, end_datetime, symbol, interval):
+def download_period_symbol_data(destination_dir:str, start_datetime:datetime, end_datetime:datetime, symbol:str, interval:str):
     """download symbol history data for the given period"""
-    today = datetime.today()
-    if end_datetime > today:
+    today:datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    if end_datetime > today :
         end_datetime = today
     if not exists(destination_dir):
         os.makedirs(destination_dir)
@@ -115,6 +120,8 @@ def download_period_symbol_data(destination_dir, start_datetime, end_datetime, s
                 day += 1
         # start_date = 1st day of next month
         start_datetime = (start_datetime.replace(day=1) + timedelta(days=32)).replace(day=1)
+        print('start_datetime=',start_datetime)
+        print('end_datetime=', end_datetime)
 
 
 def delete_month_daily_files(destination_dir, symbol, year, month, interval):
@@ -129,11 +136,12 @@ def delete_month_daily_files(destination_dir, symbol, year, month, interval):
         day += 1
 
 def unzip_file(file_path, destination_dir):
+    print(f'unzip {file_path} into {destination_dir}')
     with zipfile.ZipFile(file_path, 'r') as zip_ref:
         zip_ref.extractall(destination_dir)
 def unzip_all():
-    for conf in Configuration.get_instance().pairs_conf:
-        unzip_files_in_dir(conf.destination_dir)
+    for conf in DBUtils.get_history_configs():
+        unzip_files_in_dir(conf['dir'])
 def unzip_files_in_dir(data_dir):
     entries = os.listdir(data_dir)
     for entry in entries:
@@ -141,22 +149,23 @@ def unzip_files_in_dir(data_dir):
             unzip_file(data_dir + '/' + entry, data_dir)
 
 def load_csv():
-    for conf in Configuration.get_instance().pairs_conf:
-        load_all_csv_in_dir(conf.destination_dir)
+    for conf in DBUtils.get_history_configs():
+        load_all_csv_in_dir(conf['dir'])
 def load_all_csv_in_dir(data_dir):
     try:
-        connection = DBTools.get_connection()
+        connection = DBConnector.get_data_db_connection()
         cursor = connection.cursor()
         entries = os.listdir(data_dir)
         for entry in entries:
-            if entry.endswith(".csv"):
+            if entry.endswith(".csv") and not is_loaded_csv(entry):
                 load_csv_in_db(cursor, data_dir, entry)
+                add_loaded_csv(entry)
                 connection.commit()
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
     finally:
         cursor.close()
-        DBTools.return_connection(connection)
+        DBConnector.return_data_db_connection(connection)
 
 def load_csv_in_db(cursor, data_dir, filename):
     filepath = os.path.join(data_dir, filename)
@@ -189,8 +198,8 @@ def load_csv_in_db(cursor, data_dir, filename):
                 """COPY TMP (open_time,open_price,high_price,low_price,close_price,base_volume,close_time,
                 quote_volume,number_trades,taker_buy_base,taker_buy_quote,ignore) FROM STDIN WITH csv"""
                 ,file)
-    cursor.execute("""INSERT INTO CandleStickHistorical 
-                                    (select to_timestamp(open_time/1000),{},open_price,high_price,low_price,
+    cursor.execute(f"""INSERT INTO CandleStickHistorical 
+                                    (select to_timestamp(open_time/1000),{symbolId},open_price,high_price,low_price,
                                     close_price,base_volume,to_timestamp(close_time/1000),quote_volume,
-                                    number_trades,taker_buy_base,taker_buy_quote from tmp)""".format(symbolId))
+                                    number_trades,taker_buy_base,taker_buy_quote from tmp ) ON CONFLICT DO NOTHING """)
     cursor.execute("DROP TABLE IF EXISTS TMP")

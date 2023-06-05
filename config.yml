@@ -6,14 +6,22 @@
 #      history_start_date: <a date> in the format yyyy-mm-dd
 #      history_end_date: <a date> in the format yyyy-mm-dd or 'now' for yesterday date
 #      destination_dir: path   path where to save downloaded data
-Database:
+DataDatabase:
     instance_name: postgres
-    host: 127.0.0.1
+    host: 3.252.122.34
     port: 5432
     username: postgres
     password: postgres
 
+AppDatabase:
+    instance_name: postgres
+    host: 3.252.122.34
+    port: 5432
+    username: postgres
+    password: postgres
 
+Models:
+    dir: /tmp/
 
 Pairs:
     - BTCUSDT:

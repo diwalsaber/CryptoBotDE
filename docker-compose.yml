@@ -1,10 +1,22 @@
 services:
-  postgres:
-    container_name: CryptoBot
+  Database:
+    container_name: Database
     image: timescale/timescaledb:latest-pg15
     restart: always
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
     ports:
       - 5432:5432
+  jupyter:
+    container_name: Jupyter
+    image: jupyter/tensorflow-notebook:latest
+    environment:
+      GRANT_SUDO: yes
+    restart: always
+    volumes:
+      - "./notebooks:/home/jovyan/work"
+    ports:
+      - 8888:8888
