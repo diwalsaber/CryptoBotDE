@@ -18,8 +18,6 @@ from data_collectors.history_data_collector_api import download_missing_symbol_d
 
 from data_collectors.history_data_collector_zip import download_period_symbol_data, load_all_csv_in_dir
 
-from fastapi_cprofile.profiler import CProfileMiddleware
-
 # Define API object
 api = FastAPI(
     title='Crypto Prediction API',openapi_tags=[
