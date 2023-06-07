@@ -176,6 +176,8 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/python
 
 data_collectors/data
+/data
+/models
 .idea/
 
 *_BASE_*
