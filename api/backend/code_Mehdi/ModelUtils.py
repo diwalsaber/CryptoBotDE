@@ -37,7 +37,7 @@ def make_data_sql_query_from_cols(feature_columns:List[str], target:str=None, in
     #add features columns
     queryColumns = [features_sql_functions[col] for col in feature_columns]
     #add target column
-    if target:
+    if target and (target not in feature_columns):
         queryColumns.append(features_sql_functions[target])
     sql_query = f"SELECT time_bucket('{interval}', opentime) AS open_time,"
     sql_query += ', '.join(queryColumns)
@@ -71,6 +71,7 @@ def load_data_from_Postgres(query):
         return data
     finally:
         DBConnector.return_data_db_connection(conn)
+
 def preprocess_data(data, feature_columns, target_column, test_size=0.2, batch_size=5, lookback=10, stride=1):
     """Preprocess the dataset for training and testing.
 
@@ -86,16 +87,19 @@ def preprocess_data(data, feature_columns, target_column, test_size=0.2, batch_s
     Returns:
         tuple: The preprocessed data as (X_train, X_test, y_train, y_test, target_scaler).
     """
-    data = data[[col.name for col in [target_column]+feature_columns]].astype(float)
+    if target_column not in feature_columns:
+        columns = [target_column]+feature_columns
+    else:
+        columns = feature_columns
+    data = data[[col.name for col in feature_columns]].astype(float)
+
     #scale data
     features_scaler = StandardScaler()
     target_scaler = StandardScaler()
     feats = features_scaler.fit_transform(data[[col.name for col in feature_columns]]).astype(float)
     target =target_scaler.fit_transform(data[[target_column.name]]).astype(float)
 
-
     X_train, X_test, y_train, y_test = train_test_split(feats, target, test_size=test_size, shuffle=False)
-
 
     # Create TimeseriesGenerator for the training data
     train_generator = TimeseriesGenerator(X_train, y_train, length=lookback, batch_size=batch_size, stride=stride)
@@ -104,18 +108,20 @@ def preprocess_data(data, feature_columns, target_column, test_size=0.2, batch_s
     test_generator = TimeseriesGenerator(X_test, y_test, length=lookback, batch_size=batch_size, stride=stride)
 
     return X_train, X_test, y_train, y_test, train_generator, test_generator, features_scaler, target_scaler
+
 def create_model(create_model_input:CreateModelInput):
     df = load_data_from_Postgres(make_sql_query_from_input(create_model_input))
 
     model = create_lstm_model(create_model_input.lookback, len(create_model_input.features), create_model_input.units)
-    early_stopping = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
     X_train, X_test, y_train, y_test, train_generator, test_generator, features_scaler, target_scaler = preprocess_data(data=df, feature_columns=create_model_input.features,
                                                                                                 target_column=create_model_input.target,
                                                                                                 lookback=create_model_input.lookback,
                                                                                                 batch_size=1, stride=1)
 
     # Train LSTM model
-    trained_lstm_model, history = train_lstm_model_generator(model, train_generator, test_generator, epochs=create_model_input.epochs)
+    #early_stopping = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
+    #trained_lstm_model, history = train_lstm_model_generator(model, train_generator, test_generator, epochs=create_model_input.epochs)
+    trained_lstm_model = train_lstm_model(model, train_generator, epochs=create_model_input.epochs)
     # Get the model predictions for train and test sets
     pred_train = model.predict(train_generator)
     pred_test = model.predict(test_generator)
@@ -133,11 +139,12 @@ def create_model(create_model_input:CreateModelInput):
     score['rmse_train'] = train_rmse_score
     test_rmse_score = np.sqrt(mean_squared_error(y_test_unscaled[create_model_input.lookback:], pred_test_unscaled))
     score['rmse_test'] = test_rmse_score
-    train_mae_score = mean_absolute_error(y_train_unscaled[create_model_input.lookback:], pred_train_unscaled)
-    score['mae_train'] = train_mae_score
-    test_mae_score = mean_absolute_error(y_test_unscaled[create_model_input.lookback:], pred_test_unscaled)
-    score['mae_test'] = test_mae_score
+    #train_mae_score = mean_absolute_error(y_train_unscaled[create_model_input.lookback:], pred_train_unscaled)
+    #score['mae_train'] = train_mae_score
+    #test_mae_score = mean_absolute_error(y_test_unscaled[create_model_input.lookback:], pred_test_unscaled)
+    #score['mae_test'] = test_mae_score
     return add_model(create_model_input, model, features_scaler, target_scaler, score)
+
 def create_lstm_model(lookback:int, num_features:int, units:int=50):
     """Create an LSTM model with the specified number of units.
     Args:
@@ -149,15 +156,14 @@ def create_lstm_model(lookback:int, num_features:int, units:int=50):
     """
     model = Sequential()
     model.add(LSTM(units, activation='relu', return_sequences=True, input_shape=(lookback, num_features)))
-    model.add(Dropout(0.2))
-    model.add(LSTM(units, activation='relu', return_sequences=True, input_shape=(lookback, num_features)))
-    model.add(Dropout(0.2))
+    #model.add(Dropout(0.2))
+    #model.add(LSTM(units, activation='relu', return_sequences=True, input_shape=(lookback, num_features)))
+    #model.add(Dropout(0.2))
     model.add(LSTM(units, activation='relu', return_sequences=False))
-    model.add(Dropout(0.2))
+    #model.add(Dropout(0.2))
     model.add(Dense(1))
     model.compile(optimizer='adam', loss='mse')
     return model
-
 
 def create_lstm_model_2(lookback, num_features, loss='mean_squared_error', optimizer='adam', units=50):
     """Create an LSTM model with the specified number of units.
@@ -188,7 +194,6 @@ def create_lstm_model_2(lookback, num_features, loss='mean_squared_error', optim
 
     return model
 
-
 def train_lstm_model_generator(model, train_generator, test_generator, epochs=10):
     """Train the given LSTM model with the training data.
 
@@ -208,7 +213,6 @@ def train_lstm_model_generator(model, train_generator, test_generator, epochs=10
     history = model.fit_generator(generator=train_generator, verbose=2, epochs=epochs, validation_data=test_generator)
 
     return model, history
-
 
 def train_lstm_model(model, train_generator, epochs=10):
     """Train the given LSTM model with the training data.
