@@ -1,4 +1,5 @@
 import datetime
+import numpy as np
 from typing import Optional
 
 from fastapi import FastAPI, status, HTTPException, Depends
@@ -216,11 +217,11 @@ def deactivate_model(model_id:int, user: UserAuth = Depends(is_admin)):
 def post_predict(model_id:int, user: UserAuth = Depends(get_current_user)):
     modelDict = ModelUtils.Models.get_instance().get_model_by_id(model_id)
     if modelDict and modelDict['features_scaler'] and modelDict['target_scaler'] and modelDict['model']:
-        # Convertir les donnÃ©es en DataFrame
+        # Convertir les données en DataFrame
         model_info = DBUtils.get_model(model_id)
         data = ModelUtils.load_prediction_data(model_id)
 
-        # Normaliser les donnÃ©es
+        # Normaliser les données
         data_scaled = modelDict['features_scaler'].transform(data[model_info['features'].split(',')])
 
         prediction_list = []
@@ -247,6 +248,81 @@ def post_predict(model_id:int, user: UserAuth = Depends(get_current_user)):
             status_code=status.HTTP_404_BAD_REQUEST,
             detail={'message': f'Model with ID {model_id} not found!'}
         )
+
+@api.post('/model/predict', name='Get the prediction of the active model', tags=['model'])
+def post_predict_active_model(symbol:str, interval:str, nb_future: int=1, user: UserAuth = Depends(get_current_user)):
+    modelDict = Models.get_instance().get_model_by_symbol(symbol, interval)
+    if modelDict and modelDict['features_scaler'] and modelDict['target_scaler'] and modelDict['model']:
+        # Convertir les données en DataFrame
+        model_id = DBUtils.get_id_model_active(symbol, interval)
+        model_info = DBUtils.get_model(model_id)
+        data = ModelUtils.load_prediction_data(model_id)
+
+        # Normaliser les données
+        data_scaled = modelDict['features_scaler'].transform(data[model_info['features'].split(',')])
+
+        prediction_list = []
+        date_prediction_list = []
+
+        # compute prediction date
+        date_prediction = ModelUtils.get_moving_data(30, modelDict['interval'], modelDict['lookback'])['close_time'].iloc[-1]
+        date_prediction = datetime.datetime.strptime(str(date_prediction), '%Y-%m-%d %H:%M:%S') 
+        date_prediction = date_prediction.strftime('%Y-%m-%d')
+        for i in range(nb_future):
+            date_prediction = datetime.datetime.strptime(date_prediction, "%Y-%m-%d")
+            date_prediction = date_prediction + datetime.timedelta(days=1)
+            date_prediction = date_prediction.strftime('%Y-%m-%d')
+            date_prediction_list.append(date_prediction)
+
+        # prediction on a list of lookback values at least
+        if len(data) >= modelDict['lookback']:
+            # the last sequence is not included
+            #if len(data) > modelDict['lookback']:
+            #    generator = TimeseriesGenerator(data_scaled, data_scaled, length=modelDict['lookback'], batch_size=1, stride=1)
+            #    prediction = modelDict['model'].predict(generator)
+            #    prediction = modelDict['target_scaler'].inverse_transform(prediction)
+            #    prediction_list = prediction.flatten().tolist()
+
+            while nb_future >=1 :
+                # for the last sequence
+                data_scaled = data_scaled[-modelDict['lookback']:]
+                data_scaled_reshaped = data_scaled.reshape(1, data_scaled.shape[0], data_scaled.shape[1])
+                prediction = modelDict['model'].predict(data_scaled_reshaped)
+                prediction_unscaled = modelDict['target_scaler'].inverse_transform(prediction)
+                prediction_list.append(prediction_unscaled.flatten()[0].item())
+
+                # Transforme data de type np.array en type list afin de rajouter la dernière prediction
+                data_scaled = data_scaled.flatten().tolist()
+                # data contient les données normalisées
+                data_scaled.append(prediction.flatten()[0].item())
+                # Transforme la liste en np.array (array de 1 colonne), format utiliser pour la prédiction
+                data_scaled = np.array(data_scaled, dtype=float).reshape(-1,1)
+
+                nb_future -= 1
+
+        return {
+            'date_prediction': date_prediction_list,
+            'prediction': prediction_list
+        }
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_404_BAD_REQUEST,
+            detail={'message': f'Model active with symbol {symbol} and interval {interval} not found!'}
+        )
+    
+@api.post('/model/info', name='Get the information of the active model', tags=['model'])
+def post_info_active_model(symbol:str, interval:str, user: UserAuth = Depends(get_current_user)):
+    modelDict = Models.get_instance().get_model_by_symbol(symbol, interval)
+    if modelDict and modelDict['features_scaler'] and modelDict['target_scaler'] and modelDict['model']:
+        model_id = DBUtils.get_id_model_active(symbol, interval)
+        model_info = DBUtils.get_model(model_id)
+        
+        return model_info
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_404_BAD_REQUEST,
+            detail={'message': f'Model active with symbol {symbol} and interval {interval} not found!'}
+        )    
 
 @api.post('/history_config', tags=['history_data', 'admin'])
 def add_historyconfig(hist_config:HistoryConfigInput, user: UserAuth = Depends(is_admin)):
@@ -289,11 +365,9 @@ async def start_history_download(config_id:int, user: UserAuth = Depends(is_admi
 async def get_data(nb_records: Optional[int]=3, interval: Optional[str]="1 day", mov_avg: Optional[int]=30, user: UserAuth = Depends(get_current_user)):
     """Get the data (open price, open time, close price, high price, close price, low price, volume) on the database for BTC/USDT
     """
-
     df = ModelUtils.get_moving_data(mov_avg, interval, nb_records)
     if nb_records > len(df):
         nb_records = len(df)
-
 
     open_time = df['open_time'].iloc[-nb_records:].values.reshape(-1,1)
     close_time = df['close_time'].iloc[-nb_records:].values.reshape(-1,1)

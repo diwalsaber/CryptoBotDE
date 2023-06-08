@@ -206,6 +206,7 @@ def exists_model(model_id:int):
             return False
     finally:
         DBConnector.return_app_db_connection(connection)
+
 def get_model(model_id:int):
     try:
         connection = DBConnector.get_app_db_connection()
@@ -232,6 +233,18 @@ def get_model(model_id:int):
     finally:
         DBConnector.return_app_db_connection(connection)
 
+def get_id_model_active(symbol: str, interval:str):
+    try:
+        connection = DBConnector.get_app_db_connection()
+        cursor = connection.cursor()
+        sql = f"select id from models where interval = '{interval}' and symbol = '{symbol}' and activated = True"
+        cursor.execute(sql)
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+    finally:
+        DBConnector.return_app_db_connection(connection)
+
 def delete_model_by_id(model_id:int):
     try:
         if exists_model(model_id):
@@ -244,6 +257,7 @@ def delete_model_by_id(model_id:int):
             return True
     finally:
         DBConnector.return_app_db_connection(connection)
+
 def delete_model(symbol: str, interval:str):
     try:
         connection = DBConnector.get_app_db_connection()
@@ -297,6 +311,7 @@ def delete_history_config(symbol:str, interval:str):
         connection.commit()
     finally:
         DBConnector.return_data_db_connection(connection)
+
 def add_history_config(symbol:str, interval:str, startdate:datetime, dir:str):
     try:
         connection = DBConnector.get_data_db_connection()
