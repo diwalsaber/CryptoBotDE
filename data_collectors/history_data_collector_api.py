@@ -307,5 +307,6 @@ def merge_date_ranges(data):
 
 
 download_all_missing_data()
+
 interpolate_all_missing_data()
 

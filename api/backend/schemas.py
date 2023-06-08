@@ -63,6 +63,16 @@ class PredictInput(BaseModel):
 class TokenSchema(BaseModel):
     access_token:str
     refresh_token:str
+
+class APIKey(BaseModel):
+    key:str
+    expiration_date:datetime
+    name:str
+class ApiKeyInput(BaseModel):
+    validityInDays:int
+    name:str
+class RefreshInput(BaseModel):
+    refresh_key: Annotated[str, Query(min_length=5, max_length=500)]
 class UserAuth(BaseModel):
     email: Annotated[str, Query(min_length=5, max_length=100)]
                                 #regex="([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+")]

@@ -1,5 +1,3 @@
-import json
-
 from fastapi import HTTPException, status
 from keras import Sequential
 from keras.callbacks import EarlyStopping
@@ -11,14 +9,13 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.preprocessing import StandardScaler
 
 import joblib
 from keras.models import load_model
-from keras import metrics
 
 from cryptobot.common import DBUtils
-from api.schemas import CreateModelInput
+from schemas import CreateModelInput
 from cryptobot.common.cryptoutils import DBConnector, Singleton, Configuration
 
 features_sql_functions = {
@@ -37,7 +34,7 @@ def make_data_sql_query_from_cols(feature_columns:List[str], target:str=None, in
     #add features columns
     queryColumns = [features_sql_functions[col] for col in feature_columns]
     #add target column
-    if target:
+    if target and target not in feature_columns:
         queryColumns.append(features_sql_functions[target])
     sql_query = f"SELECT time_bucket('{interval}', opentime) AS open_time,"
     sql_query += ', '.join(queryColumns)
@@ -46,10 +43,13 @@ def make_data_sql_query_from_cols(feature_columns:List[str], target:str=None, in
         sql_query += ' desc'
     if limit >= 0:
         sql_query += f" limit {limit} "
+    print(sql_query)
     return sql_query
 
 def make_prediction_data_sql_query_from_cols(feature_columns:List[str], interval:str=None,limit:int=-1):
-    return f"SELECT {','.join(feature_columns)} FROM ({make_data_sql_query_from_cols(feature_columns=feature_columns, interval=interval, limit=limit, asc=False)}) as data order by open_time"
+    return f"""SELECT {','.join(feature_columns)} FROM 
+        ({make_data_sql_query_from_cols(feature_columns=feature_columns, interval=interval, limit=limit, asc=False)}) 
+        as data order by open_time"""
 
 
 def make_sql_query_from_input(create_model_input:CreateModelInput, asc:bool=True, limit:int=-1):
@@ -86,17 +86,17 @@ def preprocess_data(data, feature_columns, target_column, test_size=0.2, batch_s
     Returns:
         tuple: The preprocessed data as (X_train, X_test, y_train, y_test, target_scaler).
     """
-    data = data[[col.name for col in [target_column]+feature_columns]].astype(float)
+    if target_column not in feature_columns:
+        data = data[[col.name for col in [target_column]+feature_columns]].astype(float)
     #scale data
     features_scaler = StandardScaler()
     target_scaler = StandardScaler()
     feats = features_scaler.fit_transform(data[[col.name for col in feature_columns]]).astype(float)
+    print(data.columns)
     target =target_scaler.fit_transform(data[[target_column.name]]).astype(float)
 
 
     X_train, X_test, y_train, y_test = train_test_split(feats, target, test_size=test_size, shuffle=False)
-
-
     # Create TimeseriesGenerator for the training data
     train_generator = TimeseriesGenerator(X_train, y_train, length=lookback, batch_size=batch_size, stride=stride)
 
@@ -359,3 +359,15 @@ def get_moving_data(mov_avg:int, interval:str, nb_records:int):
     df = load_data_from_Postgres(sql_query)
 
     return df
+
+
+def load_active_model(symbol: str, interval:str):
+    try:
+        connection = DBConnector.get_app_db_connection()
+        cursor = connection.cursor()
+        cursor.execute(f"select model_path, features_scaler_path, target_scaler_path from models where interval = '{interval}' and symbol = '{symbol}' and active == True")
+        row = cursor.fetchone()
+        if row:
+            return load_model(row[0]), joblib.load(row[1]), joblib.load(row[2])
+    finally:
+        DBConnector.return_app_db_connection(connection)

@@ -4,8 +4,6 @@ from datetime import datetime
 from cryptobot.common.exceptions import ExistingUser, NotExistingUser
 from cryptobot.common import cryptoutils
 from cryptobot.common.cryptoutils import DBConnector
-import joblib
-from keras.models import load_model
 
 def create_user(email: str, password: str):
     try:
@@ -72,16 +70,66 @@ def exists(email):
         DBConnector.return_app_db_connection(connection)
 
 
-def add_token(email: str, token: str, refresh_token: str):
+
+def add_api_key(email: str, key: str, expire_datetime: datetime, name:str):
     try:
         user_id = get_user_id(email)
         connection = DBConnector.get_app_db_connection()
         cursor = connection.cursor()
-        cursor.execute(f"insert into tokens values (nextval('seq_tokens'),'{user_id}', '{token}','{refresh_token}')")
+        cursor.execute(f"insert into api_keys values (nextval('seq_api_keys'),'{user_id}', '{key}','{expire_datetime}','{name}')")
+        connection.commit()
+    finally:
+        DBConnector.return_app_db_connection(connection)
+def get_api_keys(email: str):
+    result = []
+    try:
+        user_id = get_user_id(email)
+        connection = DBConnector.get_app_db_connection()
+        cursor = connection.cursor()
+        cursor.execute(f"select id,key,expiration_date, name from  api_keys where user_id = {user_id}")
+        rows = cursor.fetchall()
+        if rows:
+            for row in rows:
+                result.append({
+                    'id': {row[0]},
+                    'key':f'{row[1]}',
+                               'expiration_date': row[2],
+                               'name': row[3],})
+    finally:
+        DBConnector.return_app_db_connection(connection)
+    return result
+
+
+def exists_api_key(email: str, key:str):
+    try:
+        user_id = get_user_id(email)
+        connection = DBConnector.get_app_db_connection()
+        cursor = connection.cursor()
+        cursor.execute(f"select id from  api_keys where user_id = {user_id} and key = '{key}'")
+        row = cursor.fetchone
+        return row != None
+    finally:
+        DBConnector.return_app_db_connection(connection)
+
+def delete_api_key(email: str, key: str):
+    try:
+        user_id = get_user_id(email)
+        connection = DBConnector.get_app_db_connection()
+        cursor = connection.cursor()
+        cursor.execute(f"delete  from api_keys where user_id = {user_id} and (key = '{key}' or name = '{key}')")
         connection.commit()
     finally:
         DBConnector.return_app_db_connection(connection)
 
+def delete_api_keys(email: str):
+    try:
+        user_id = get_user_id(email)
+        connection = DBConnector.get_app_db_connection()
+        cursor = connection.cursor()
+        cursor.execute(f"delete from api_keys where user_id = {user_id}")
+        connection.commit()
+    finally:
+        DBConnector.return_app_db_connection(connection)
 
 def get_tokens(email: str):
     try:
@@ -117,17 +165,6 @@ def delete_token(email: str, token: str):
     finally:
         DBConnector.return_app_db_connection(connection)
 
-
-def load_active_model(symbol: str, interval:str):
-    try:
-        connection = DBConnector.get_app_db_connection()
-        cursor = connection.cursor()
-        cursor.execute(f"select model_path, features_scaler_path, target_scaler_path from models where interval = '{interval}' and symbol = '{symbol}' and active == True")
-        row = cursor.fetchone()
-        if row:
-            return load_model(row[0]), joblib.load(row[1]), joblib.load(row[2])
-    finally:
-        DBConnector.return_app_db_connection(connection)
 
 def get_models(include_invalids:bool = False):
     try:

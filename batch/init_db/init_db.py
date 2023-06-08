@@ -1,8 +1,7 @@
 from datetime import datetime
 
 from cryptobot.common.DBUtils import add_history_config
-from cryptobot.common.cryptoutils import Configuration
-from data_collectors.create_schema import create_data_db_schema, create_app_db_schema
+from create_schema import create_data_db_schema, create_app_db_schema
 from data_collectors.history_data_collector_zip import unzip_all, load_csv, download_history_data
 
 #create and init the databases schemas

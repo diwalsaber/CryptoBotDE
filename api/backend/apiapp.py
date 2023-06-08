@@ -5,15 +5,17 @@ from fastapi import FastAPI, status, HTTPException, Depends
 from keras.preprocessing.sequence import TimeseriesGenerator
 from starlette.responses import HTMLResponse
 
-from api import ModelUtils
-from api.ModelUtils import Models
+import ModelUtils
 from cryptobot.common import DBUtils
 from cryptobot.common.exceptions import CryptoException
 
-from api.schemas import UserAuth, PredictInput, TokenSchema, HistoryConfigInput, CreateModelInput
+from schemas import UserAuth, TokenSchema, HistoryConfigInput, CreateModelInput, ApiKeyInput, APIKey, \
+    RefreshInput
 from fastapi.security import OAuth2PasswordRequestForm
 
-from api.authenticationutils import get_hashed_password, get_current_user, verify_password, create_access_token, create_refresh_token, is_admin
+from authenticationutils import get_hashed_password, get_current_user, verify_password, create_access_token, \
+    create_refresh_token, is_admin, create_api_key, get_api_keys, revoke_api_key, revoke_api_keys, \
+    get_refresh_current_user
 from data_collectors.history_data_collector_api import download_missing_symbol_data, interpolate_missing_for_symbol
 
 from data_collectors.history_data_collector_zip import download_period_symbol_data, load_all_csv_in_dir
@@ -105,7 +107,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
         access_token = create_access_token(user['email'])
         refresh_token = create_refresh_token(user['email'])
-        DBUtils.add_token(form_data.username, access_token, refresh_token)
+
         return TokenSchema(access_token=access_token,
                        refresh_token= refresh_token)
     except CryptoException as e:
@@ -114,8 +116,66 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
                 detail={'message':e.message, 'code':e.code}
             )
 
+@api.post('/refresh', tags=['general'])
+def refresh_token(refreshInput:RefreshInput):
+    try:
+        user = get_refresh_current_user(refreshInput.refresh_key)
+        access_token = create_access_token(user['email'])
+    except Exception as e:
+        error = e.__class__.__name__
+        if error == 'MissingTokenError':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail='Please provide refresh token')
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+
+    return {'access_token': access_token}
+
+@api.post('/apiKey', summary="Create api key for user", response_model=APIKey, tags=['general'])
+def apiKey(apikeyInput:ApiKeyInput, user: UserAuth = Depends(get_current_user)):
+    try:
+        api_key, expire_datetime = create_api_key(user['email'], apikeyInput.validityInDays)
+        DBUtils.add_api_key(user['email'], api_key, expire_datetime, apikeyInput.name)
+        return APIKey(key=api_key, expiration_date=expire_datetime, name=apikeyInput.name)
+    except CryptoException as e:
+        raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={'message':e.message, 'code':e.code}
+            )
+@api.get('/apyKeys', summary="get current user api keys", response_model=list[APIKey], tags=['general'])
+def apiKeys(user: UserAuth = Depends(get_current_user)):
+    try:
+        return get_api_keys(user['email'])
+    except CryptoException as e:
+        raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={'message':e.message, 'code':e.code}
+            )
+@api.get('/revoke/{key}', summary="Revoke user's api key by key value or key name", tags=['general'])
+def revokeKey(key:str, user: UserAuth = Depends(get_current_user)):
+    try:
+         revoke_api_key(user['email'], key)
+         return {'status': 'success'}
+    except CryptoException as e:
+        raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={'message':e.message, 'code':e.code}
+            )
+@api.get('/revokeAll', summary="Revoke all user api keys", tags=['general'])
+def revokeKeys(user: UserAuth = Depends(get_current_user)):
+    try:
+         revoke_api_keys(user['email'])
+         return {'status': 'success'}
+    except CryptoException as e:
+        raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={'message':e.message, 'code':e.code}
+            )
+
 @api.get('/me', summary='Get details of currently logged in user', tags=['general'])
 def get_me(user: UserAuth = Depends(get_current_user)):
+    print(user)
+    print(type(user))
     return user
 
 @api.get('/models', tags=['model'])
@@ -154,7 +214,7 @@ def deactivate_model(model_id:int, user: UserAuth = Depends(is_admin)):
 
 @api.post('/model/{model_id}/predict', name='Get the prediction of next interval', tags=['model'])
 def post_predict(model_id:int, user: UserAuth = Depends(get_current_user)):
-    modelDict = Models.get_instance().get_model_by_id(model_id)
+    modelDict = ModelUtils.Models.get_instance().get_model_by_id(model_id)
     if modelDict and modelDict['features_scaler'] and modelDict['target_scaler'] and modelDict['model']:
         # Convertir les données en DataFrame
         model_info = DBUtils.get_model(model_id)
@@ -217,7 +277,7 @@ async def start_history_download(config_id:int, user: UserAuth = Depends(is_admi
 
             load_all_csv_in_dir(history_config['dir'])
             download_missing_symbol_data(history_config['symbol'], history_config['interval'], history_config['startdate'])
-            interpolate_missing_for_symbol(symbol=history_config['symbol'], start_datetime=history_config['startdate'])
+            #interpolate_missing_for_symbol(symbol=history_config['symbol'], start_datetime=history_config['startdate'])
             return {'status':'success'}
     except Exception as e:
         raise HTTPException(
@@ -225,12 +285,12 @@ async def start_history_download(config_id:int, user: UserAuth = Depends(is_admi
         )
 
 
-@api.get('/data', name='Get the data on the database')
+@api.get('/data', name='Get the data on the database' , tags=['history_data'])
 async def get_data(nb_records: Optional[int]=3, interval: Optional[str]="1 day", mov_avg: Optional[int]=30, user: UserAuth = Depends(get_current_user)):
     """Get the data (open price, open time, close price, high price, close price, low price, volume) on the database for BTC/USDT
     """
 
-    df = ModelUtils.get_moving_data(mov_avg,interval, nb_records)
+    df = ModelUtils.get_moving_data(mov_avg, interval, nb_records)
     if nb_records > len(df):
         nb_records = len(df)
 

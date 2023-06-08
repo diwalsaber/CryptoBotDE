@@ -1,6 +1,6 @@
 import psycopg2
 
-from cryptobot.common.cryptoutils import DBConnector, Configuration
+from cryptobot.common.cryptoutils import DBConnector
 
 def create_data_db_schema():
     connection = None
@@ -100,18 +100,19 @@ def create_app_db_schema():
             """)
         cursor.execute("CREATE SEQUENCE  IF NOT EXISTS SEQ_USERS;")
         cursor.execute("CREATE INDEX  IF NOT EXISTS IDX_USERS_EMAIL ON Users(email)")
-
+        connection.commit()
         #tokens table
-        cursor.execute("""CREATE TABLE IF NOT EXISTS tokens (
+        cursor.execute("""CREATE TABLE IF NOT EXISTS api_keys (
                     id integer primary key,
                     user_id integer,
-                    token varchar(1000),
-                    refresh_token varchar(1000),
+                    key varchar(1000),
+                    expiration_date timestamp,
+                    name varchar(1000),
                     CONSTRAINT fk_users FOREIGN KEY(user_id) REFERENCES users(id))
                     """)
-        cursor.execute("CREATE SEQUENCE  IF NOT EXISTS SEQ_TOKENS;")
-        cursor.execute("CREATE INDEX  IF NOT EXISTS IDX_TOKENS_USER_ID ON tokens(user_id)")
-
+        cursor.execute("CREATE SEQUENCE  IF NOT EXISTS SEQ_API_KEYS;")
+        cursor.execute("CREATE INDEX  IF NOT EXISTS IDX_API_KEYS_USER_ID ON api_keys(user_id)")
+        connection.commit()
         #models table
         cursor.execute("""CREATE TABLE IF NOT EXISTS models (
                             id integer primary key,

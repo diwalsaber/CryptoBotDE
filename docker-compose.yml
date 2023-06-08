@@ -9,14 +9,71 @@ services:
     volumes:
       - ./postgres-data:/var/lib/postgresql/data
     ports:
-      - 5432:5432
-  jupyter:
-    container_name: Jupyter
-    image: jupyter/tensorflow-notebook:latest
+      - 5433:5432
+    networks:
+      - crypto_network
+#  initdb:
+#    container_name: initdb
+#    image: datascientestopa/crypto-initdb:1.0.0
+#    environment:
+#      DATA_DB_INSTANCE: postgres
+#      DATA_DB_HOST: Database
+#      DATA_DB_PORT: 5432
+#      DATA_DB_USERNAME: postgres
+#      DATA_DB_PASSWORD: postgres
+#      PP_DB_INSTANCE:
+#      APP_DB_HOST: Database
+#      APP_DB_PORT: 5432
+#      APP_DB_USERNAME: postgres
+#      APP_DB_PASSWORD: postgres
+#    restart: always
+#    depends_on:
+#      - Database
+#    networks:
+#      - crypto_network
+  api:
+    container_name: api
+    image: datascientestopa/crypto-api:1.0.0
     environment:
-      GRANT_SUDO: yes
+      DATA_DB_INSTANCE: postgres
+      DATA_DB_HOST: Database
+      DATA_DB_PORT: 5432
+      DATA_DB_USERNAME: postgres
+      DATA_DB_PASSWORD: postgres
+      PP_DB_INSTANCE:
+      APP_DB_HOST: Database
+      APP_DB_PORT: 5432
+      APP_DB_USERNAME: postgres
+      APP_DB_PASSWORD: postgres
+      JWT_SECRET_KEY: 691e8c6af809eedcff3769ea94eb331025868d3f82cbc8bb0771087cdf3abd2b #change me: use 'openssl rand -hex 32' to generate one
+      JWT_REFRESH_SECRET_KEY: 95ba05f3438b434a4bdb3d8cfc08288c8120549dc17b29ba8279c54ed631eb55 #change me: use 'openssl rand -hex 32' to generate one
     restart: always
     volumes:
-      - "./notebooks:/home/jovyan/work"
+      - "./models:/usr/crypto/models"
     ports:
-      - 8888:8888
+      - 8000:8000
+    depends_on:
+      - Database
+    networks:
+      - crypto_network
+  websocket:
+    container_name: websocket
+    image: datascientestopa/crypto-websocket:1.0.0
+    environment:
+      DATA_DB_INSTANCE: postgres
+      DATA_DB_HOST: Database
+      DATA_DB_PORT: 5432
+      DATA_DB_USERNAME: postgres
+      DATA_DB_PASSWORD: postgres
+      PP_DB_INSTANCE:
+      APP_DB_HOST: Database
+      APP_DB_PORT: 5432
+      APP_DB_USERNAME: postgres
+      APP_DB_PASSWORD: postgres
+    depends_on:
+      - Database
+    networks:
+      - crypto_network
+networks:
+  crypto_network:
+    driver: bridge

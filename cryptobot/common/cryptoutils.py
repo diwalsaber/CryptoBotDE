@@ -1,6 +1,4 @@
-import datetime
-import json
-from datetime import datetime
+import os
 
 import psycopg2
 from psycopg2 import pool
@@ -24,22 +22,92 @@ class Configuration(metaclass=Singleton):
         if exists(configuration_file):
             with open(configuration_file) as f:
                 configuration = yaml.load(f, Loader=SafeLoader)
-                self.data_db_conf = DataBaseConfiguration(configuration.get('DataDatabase').get('instance_name'),
-                                                configuration.get('DataDatabase').get('host'),
-                                                configuration.get('DataDatabase').get('port'),
-                                                configuration.get('DataDatabase').get('username'),
-                                                configuration.get('DataDatabase').get('password'))
-                self.app_db_conf = DataBaseConfiguration(configuration.get('AppDatabase').get('instance_name'),
-                                                          configuration.get('AppDatabase').get('host'),
-                                                          configuration.get('AppDatabase').get('port'),
-                                                          configuration.get('AppDatabase').get('username'),
-                                                          configuration.get('AppDatabase').get('password'))
 
-        else:
-            raise Exception("Configuration file not found! " + configuration_file)
+        self.data_db_conf = DataBaseConfiguration(get_env_value_fallback("DATA_DB_INSTANCE",
+                                                    configuration.get('DataDatabase').get('instance_name') \
+                                                        if configuration and configuration.get('DataDatabase') \
+                                                           and configuration.get('DataDatabase').get('instance_name')\
+                                                        else 'postgres'),
+                                                  get_env_value_fallback("DATA_DB_HOST",
+                                                                         configuration.get('DataDatabase').get(
+                                                                             'host') \
+                                                                             if configuration and configuration.get(
+                                                                             'DataDatabase') \
+                                                                                and configuration.get(
+                                                                             'DataDatabase').get('host') \
+                                                                             else 'localhost'),
+                                                  get_env_value_fallback("DATA_DB_PORT",
+                                                                         configuration.get('DataDatabase').get(
+                                                                             'port') \
+                                                                             if configuration and configuration.get(
+                                                                             'DataDatabase') \
+                                                                                and configuration.get(
+                                                                             'DataDatabase').get('port') \
+                                                                             else '5432'),
+                                                  get_env_value_fallback("DATA_DB_USERNAME",
+                                                                         configuration.get('DataDatabase').get(
+                                                                             'username') \
+                                                                             if configuration and configuration.get(
+                                                                             'DataDatabase') \
+                                                                                and configuration.get(
+                                                                             'DataDatabase').get('username') \
+                                                                             else 'postgres'),
+                                                  get_env_value_fallback("DATA_DB_PASSWORD",
+                                                                         configuration.get('DataDatabase').get(
+                                                                             'password') \
+                                                                             if configuration and configuration.get(
+                                                                             'DataDatabase') \
+                                                                                and configuration.get(
+                                                                             'DataDatabase').get('password') \
+                                                                             else 'postgres'))
+        self.app_db_conf = DataBaseConfiguration(get_env_value_fallback("APP_DB_INSTANCE",
+                                                    configuration.get('AppDatabase').get('instance_name') \
+                                                        if configuration and configuration.get('AppDatabase') \
+                                                           and configuration.get('AppDatabase').get('instance_name')\
+                                                        else 'postgres'),
+                                                  get_env_value_fallback("APP_DB_HOST",
+                                                                         configuration.get('AppDatabase').get(
+                                                                             'host') \
+                                                                             if configuration and configuration.get(
+                                                                             'AppDatabase') \
+                                                                                and configuration.get(
+                                                                             'AppDatabase').get('host') \
+                                                                             else 'localhost'),
+                                                  get_env_value_fallback("APP_DB_PORT",
+                                                                         configuration.get('AppDatabase').get(
+                                                                             'port') \
+                                                                             if configuration and configuration.get(
+                                                                             'AppDatabase') \
+                                                                                and configuration.get(
+                                                                             'AppDatabase').get('port') \
+                                                                             else '5432'),
+                                                  get_env_value_fallback("APP_DB_USERNAME",
+                                                                         configuration.get('AppDatabase').get(
+                                                                             'username') \
+                                                                             if configuration and configuration.get(
+                                                                             'AppDatabase') \
+                                                                                and configuration.get(
+                                                                             'AppDatabase').get('username') \
+                                                                             else 'postgres'),
+                                                  get_env_value_fallback("APP_DB_PASSWORD",
+                                                                         configuration.get('AppDatabase').get(
+                                                                             'password') \
+                                                                             if configuration and configuration.get(
+                                                                             'AppDatabase') \
+                                                                                and configuration.get(
+                                                                             'AppDatabase').get('password') \
+                                                                             else 'postgres'))
+
+
     @staticmethod
     def get_instance():
         return Configuration()
+
+def get_env_value_fallback(variable:str, default:str=None):
+    if variable and variable in os.environ and os.environ[variable] is not None:
+        return os.environ[variable]
+    else:
+        return default
 
 
 class DBConnector(metaclass=Singleton):

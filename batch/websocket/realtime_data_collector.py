@@ -1,9 +1,8 @@
-import csv
 from binance import ThreadedWebsocketManager
 import psycopg2
 
 from cryptobot.common import DBUtils
-from cryptobot.common.cryptoutils import Configuration, DBConnector, get_symbol_id
+from cryptobot.common.cryptoutils import DBConnector, get_symbol_id
 
 api_key = ''
 api_secret = ''
@@ -65,7 +64,7 @@ def insert_data_table(row):
     try:
         connection = DBConnector.get_data_db_connection()
         cur = connection.cursor()
-        insert_query = "INSERT INTO CandlestickRealTime VALUES (to_timestamp({}/1000),{},{},{},{},{},{},to_timestamp({}/1000),{},{},{},{})" \
+        insert_query = "INSERT INTO CandleStickHistorical VALUES (to_timestamp({}/1000),{},{},{},{},{},{},to_timestamp({}/1000),{},{},{},{})" \
             .format(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11])
         cur.execute(insert_query)
         cur.close()
@@ -76,4 +75,4 @@ def insert_data_table(row):
         DBConnector.return_data_db_connection(connection)
 
 
-#download_realtime_data()
+download_realtime_data()
