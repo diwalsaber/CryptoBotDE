@@ -6,7 +6,7 @@ CryptoBotDE est un bot de trading de cryptomonnaies qui utilise une approche de 
 
 ## Structure du projet
 
-Le projet est structuré en trois parties principales : le backend, le frontend et le tradingbot.
+Le projet est structuré en trois parties principales : le backend, le frontend et une partie data.
 
 ### Backend
 
