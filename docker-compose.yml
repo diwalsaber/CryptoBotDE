@@ -12,25 +12,25 @@ services:
       - 5433:5432
     networks:
       - crypto_network
-#  initdb:
-#    container_name: initdb
-#    image: datascientestopa/crypto-initdb:1.0.0
-#    environment:
-#      DATA_DB_INSTANCE: postgres
-#      DATA_DB_HOST: Database
-#      DATA_DB_PORT: 5432
-#      DATA_DB_USERNAME: postgres
-#      DATA_DB_PASSWORD: postgres
-#      PP_DB_INSTANCE:
-#      APP_DB_HOST: Database
-#      APP_DB_PORT: 5432
-#      APP_DB_USERNAME: postgres
-#      APP_DB_PASSWORD: postgres
-#    restart: always
-#    depends_on:
-#      - Database
-#    networks:
-#      - crypto_network
+  initdb:
+    container_name: initdb
+    image: datascientestopa/crypto-initdb:1.0.0
+    environment:
+      DATA_DB_INSTANCE: postgres
+      DATA_DB_HOST: Database
+      DATA_DB_PORT: 5432
+      DATA_DB_USERNAME: postgres
+      DATA_DB_PASSWORD: postgres
+      PP_DB_INSTANCE:
+      APP_DB_HOST: Database
+      APP_DB_PORT: 5432
+      APP_DB_USERNAME: postgres
+      APP_DB_PASSWORD: postgres
+    restart: always
+    depends_on:
+      - Database
+    networks:
+      - crypto_network
   api:
     container_name: api
     image: datascientestopa/crypto-api:1.0.0
@@ -70,6 +70,29 @@ services:
       APP_DB_PORT: 5432
       APP_DB_USERNAME: postgres
       APP_DB_PASSWORD: postgres
+    depends_on:
+      - Database
+    networks:
+      - crypto_network
+  frontend:
+    container_name: frontend
+    image: datascientestopa/crypto-frontend:1.0.0
+    environment:
+      DATA_DB_INSTANCE: postgres
+      DATA_DB_HOST: Database
+      DATA_DB_PORT: 5432
+      DATA_DB_USERNAME: postgres
+      DATA_DB_PASSWORD: postgres
+      PP_DB_INSTANCE:
+      APP_DB_HOST: Database
+      APP_DB_PORT: 5432
+      APP_DB_USERNAME: postgres
+      APP_DB_PASSWORD: postgres
+      API_HOST: api
+      API_PORT: 8000
+      API_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2ODYzMTAyMTcsInN1YiI6ImFkbWluIiwiaXNfYXBpX2tleSI6ZmFsc2V9.vnswsKpYBcxYfzTo8q4Pzgu4ymJR4be7RlLlLlHzxIY
+    ports:
+      - 8501:8501
     depends_on:
       - Database
     networks:

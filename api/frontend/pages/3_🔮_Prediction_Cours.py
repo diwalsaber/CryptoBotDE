@@ -4,10 +4,11 @@ import requests
 import plotly.graph_objects as go
 from datetime import datetime
 
+from cryptobot.common.cryptoutils import get_env_value_fallback
 
 # Deployement on local machine
-BACKEND = "http://localhost:8000"
-TOKEN_KEY = ""
+BACKEND = f"""http://{get_env_value_fallback('API_HOST', 'localhost')}:{get_env_value_fallback('API_PORT',8000)}"""
+TOKEN_KEY = f"{get_env_value_fallback('API_KEY')}"
 identification = False
 
 # Fonction pour faire une prédiction

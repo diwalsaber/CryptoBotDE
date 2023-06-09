@@ -1,9 +1,10 @@
 import streamlit as st
 import requests
 
-# Deployement on local machine
-BACKEND = "http://localhost:8000"
+from cryptobot.common.cryptoutils import get_env_value_fallback
 
+# Deployement on local machine
+BACKEND = f"""http://{get_env_value_fallback('API_HOST', 'localhost')}:{get_env_value_fallback('API_PORT',8000)}"""
 
 st.set_page_config(page_title="Identification", page_icon="🔓")
 

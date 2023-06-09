@@ -6,10 +6,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import date
 
+from cryptobot.common.cryptoutils import get_env_value_fallback
 
 # Deployement on local machine
-BACKEND = "http://localhost:8000"
-TOKEN_KEY = ""
+BACKEND = f"""http://{get_env_value_fallback('API_HOST', 'localhost')}:{get_env_value_fallback('API_PORT',8000)}"""
+TOKEN_KEY = f"{get_env_value_fallback('API_KEY')}"
 identification = False
 
 def compute_nb_records(period = 'All', interval = '1 day'):
