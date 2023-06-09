@@ -123,7 +123,7 @@ Pour vous connecter à Airflow, utilisez les informations suivantes :
 | Utilisateur  | airflow |
 | Mot de passe | airflow |
 
-### Execution globale `setup.sh`
+### Execution globale avec `setup.sh`
 Vous pouvez aussi simplement lancer la commande suivante (assurez-vous qu'il soit exécutable avec la commande : `chmod +x setup.sh`):
 
 `./setup.sh`
