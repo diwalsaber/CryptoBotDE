@@ -78,7 +78,9 @@ Le service Airflow, situé dans le répertoire airflow/, est utilisé pour autom
 Pour installer et exécuter ce projet, vous devez avoir Docker et Docker Compose installés sur votre machine. Une fois que c'est fait, vous pouvez construire et exécuter l'application avec les commandes suivantes :
 
 ### Cloner le dépôt
+
 `git clone https://github.com/diwalsaber/CryptoBotDE.git`
+
 `cd CryptoBotDE`
 
 ### Création de la variable d'environnement AIRFLOW_UID
@@ -113,6 +115,7 @@ Pour vous connecter à Adminer, utilisez les informations suivantes :
 
 
 - Airflow (automatisation) : http://localhost:8080
+
 Pour vous connecter à Airflow, utilisez les informations suivantes :
 
 | Informations | Valeurs |
