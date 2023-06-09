@@ -23,7 +23,7 @@ class Input(BaseModel):
     """
     data: list[float]
 
-def execute_query(query, host='localhost', port=5432, dbname='postgres', user='postgres', password='postgres'):
+def execute_query(query, host='timescaledb', port=5432, dbname='postgres', user='postgres', password='postgres'):
     """Load the dataset from a PostgreSQL TimescaleDB table using a SQL query.
     
     Args:
