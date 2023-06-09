@@ -1,16 +1,20 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from tensorflow import keras
+from keras.models import load_model
 import psycopg2 as pg
 import pandas as pd
 import joblib
 
 # Charger le modèle de prédiction et le scaler
-model = keras.models.load_model('lstm.h5')
+model = load_model('lstm.h5')
 scaler = joblib.load('scaler.job')
 
 # Initialiser FastAPI
 app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {"message": "Bienvenue sur l'API de prévision du cours du Bitcoin"}
 
 class Input(BaseModel):
     """
@@ -19,7 +23,7 @@ class Input(BaseModel):
     """
     data: list[float]
 
-def execute_query(query, host='timescaledb', port=5432, dbname='postgres', user='postgres', password='postgres'):
+def execute_query(query, host='localhost', port=5432, dbname='postgres', user='postgres', password='postgres'):
     """Load the dataset from a PostgreSQL TimescaleDB table using a SQL query.
     
     Args:
@@ -46,6 +50,60 @@ def execute_query(query, host='timescaledb', port=5432, dbname='postgres', user=
 
     return data
 
+@app.get("/ohlcv")
+def get_ohlcv(nb_days: int = None):
+    """
+    Récupère toutes les valeurs OHLCV à partir de la base de données TimescaleDB.
+
+    Args:
+        nb_days (int, optional): Le nombre de jours à récupérer. 
+                                 Si non défini, toutes les données sont récupérées.
+
+    Returns:
+        dict: Un dictionnaire contenant toutes les données OHLCV disponibles.
+    """
+
+    # Récupérer toutes les valeurs OHLCV depuis la base de données TimescaleDB
+    if nb_days is not None:
+        query = f"""
+        SELECT 
+            time_bucket('1 day', open_time) AS day,
+            first(open, open_time) AS open,
+            max(high) AS high,
+            min(low) AS low,
+            last(close, close_time) AS close,
+            sum(volume) as volume
+        FROM 
+            btcusdt
+        GROUP BY 
+            day
+        ORDER BY 
+            day DESC
+        LIMIT {nb_days};
+        """
+    else:
+        query = f"""
+        SELECT 
+            time_bucket('1 day', open_time) AS day,
+            first(open, open_time) AS open,
+            max(high) AS high,
+            min(low) AS low,
+            last(close, close_time) AS close,
+            sum(volume) as volume
+        FROM 
+            btcusdt
+        GROUP BY 
+            day
+        ORDER BY 
+            day DESC;
+        """
+
+    result = execute_query(query)
+
+    return result.to_dict(orient='records')
+
+
+
 @app.get("/prices")
 def get_prices(nb_day: int):
     """
@@ -59,10 +117,18 @@ def get_prices(nb_day: int):
     """
 
     # Récupérer les dernières valeurs du close price depuis la base de données TimescaleDB
-    query = f"SELECT close FROM btcusdt ORDER BY close_time DESC LIMIT {nb_day}"
+    # query = f"SELECT close FROM btcusdt ORDER BY close_time DESC LIMIT {nb_day}"
+    query = f"""
+            SELECT time_bucket('1440 minutes', close_time) AS day, AVG(close) AS average_close
+            FROM btcusdt
+            GROUP BY day
+            ORDER BY day DESC
+            LIMIT {nb_day}
+            """
     result = execute_query(query)
+    print(result)
 
-    return {'prices': result['close'].values.tolist()}
+    return {'prices': result['average_close'].values.tolist()}
 
 
 
