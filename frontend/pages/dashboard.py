@@ -4,7 +4,7 @@ import requests
 import streamlit as st
 import pandas as pd
 
-BACKEND = "http://localhost:8000"
+BACKEND = "http://fastapi:8001"
 
 def plot_candlestick(nb_days, moving_avg_period=7):
     response = requests.get(BACKEND + '/ohlcv', params={'nb_days': nb_days})

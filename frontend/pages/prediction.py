@@ -3,7 +3,7 @@ import requests
 from binance.client import Client
 
 # URL du backend pour la prédiction
-BACKEND = "http://127.0.0.1:8000"
+BACKEND = "http://fastapi:8001"
 
 # Initialiser le client Binance
 client = Client(api_key='your_api_key', api_secret='your_api_secret')
