@@ -96,7 +96,7 @@ Si les répertoires nécessaires pour les volumes montés ne sont pas existant i
 
 ### Construire et lancer les conteneurs Docker
 
-`docker-compose up --build -d`
+`docker-compose up -d`
 
 Une fois l'application en cours d'exécution, vous pouvez accéder aux différentes interfaces de l'application en ouvrant votre navigateur web et en naviguant vers les adresses suivantes :
 
