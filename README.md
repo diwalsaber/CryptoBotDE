@@ -138,7 +138,7 @@ Naviguez vers l'interface utilisateur d'Airflow à l'adresse http://localhost:80
 Allez à l'onglet DAGs et activez le DAG update_db_dag.
 Pour exécuter le DAG, déclenchez-le manuellement pour la première fois en cliquant sur le lien du DAG update_db_dag, puis sur le bouton "Trigger DAG" en haut de l'écran.
 
-
+### Fermeture des dockers
 Pour arrêter et supprimer les conteneurs, le réseau et les volumes, utilisez la commande suivante :
 
 `docker-compose down`
