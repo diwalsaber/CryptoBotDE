@@ -13,4 +13,4 @@ echo -e "AIRFLOW_UID=$(id -u)" > .env
 mkdir -p ./airflow/logs ./airflow/plugins ./airflow/config
 
 # Construire et lancer les conteneurs Docker
-docker-compose up -d
+docker-compose up --build -d
