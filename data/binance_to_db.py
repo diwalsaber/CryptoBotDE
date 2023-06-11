@@ -3,9 +3,6 @@ import time
 import psycopg2
 from binance.client import Client
 
-# Initialiser le client Binance
-client = Client(api_key='your_api_key', api_secret='your_api_secret')
-
 def run():
     def get_historical_data():
         # Initialiser le client Binance
@@ -38,7 +35,7 @@ def run():
 
         return klines
 
-    def initialize_db():
+    def create_historic_table():
         # Initialiser la connexion à la base de données
         conn = psycopg2.connect(
             host='timescaledb',
@@ -73,7 +70,32 @@ def run():
         cur.close()
         conn.close()
 
-    def fill_db(klines):
+    # def create_real_time_table():
+    # # Initialise the connection to the database
+    #     conn = psycopg2.connect(
+    #         host='timescaledb',
+    #         port=5432,
+    #         dbname='postgres',
+    #         user='postgres',
+    #         password='postgres'
+    #     )
+    #     cur = conn.cursor()
+
+    #     # Create a new table to store real-time data
+    #     cur.execute("""
+    #         CREATE TABLE IF NOT EXISTS real_time (
+    #             timestamp TIMESTAMP NOT NULL,
+    #             price DECIMAL NOT NULL,
+    #             PRIMARY KEY (timestamp)
+    #         )
+    #     """)
+
+    #     # Commit the changes and close the connection
+    #     conn.commit()
+    #     cur.close()
+    #     conn.close()
+
+    def fill_table(klines):
         # Initialiser la connexion à la base de données
         conn = psycopg2.connect(
             host='timescaledb',
@@ -101,10 +123,11 @@ def run():
     klines = get_historical_data()
 
     # Initialize the database
-    initialize_db()
+    create_historic_table()
+    #create_real_time_table()
 
     # Fill the database with collected data
-    fill_db(klines)
+    fill_table(klines)
     
 if __name__ == "__main__":
     run()

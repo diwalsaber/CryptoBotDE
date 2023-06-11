@@ -1,16 +1,23 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket
 from pydantic import BaseModel
 from keras.models import load_model
+from datetime import timedelta
 import psycopg2 as pg
 import pandas as pd
 import joblib
+from binance import AsyncClient, BinanceSocketManager
 
 # Charger le modèle de prédiction et le scaler
 model = load_model('lstm.h5')
 scaler = joblib.load('scaler.job')
 
 # Initialiser FastAPI
-app = FastAPI()
+app = FastAPI(
+    title="Crypto Trading Bot",
+    description="This is an API for tracking the latest Bitcoin prices in real time and predict the future price.",
+    version="1.0.0"
+)
+
 
 @app.get("/")
 async def root():
@@ -49,6 +56,38 @@ def execute_query(query, host='timescaledb', port=5432, dbname='postgres', user=
         data = pd.read_sql_query(query, conn)
 
     return data
+
+def get_avg_price_24h():
+    """Récupère le prix moyen du cours de bitcoin au cours des 24 dernières heures.
+
+    Returns:
+        float: Le prix moyen du cours de bitcoin au cours des 24 dernières heures.
+    """
+
+    # Créer la requête SQL pour obtenir la dernière heure de la base de données
+    query_latest_time = "SELECT MAX(close_time) AS latest_time FROM btcusdt;"
+
+    # Exécuter la requête SQL et récupérer le résultat
+    result_latest_time = execute_query(query_latest_time)
+
+    # Obtenir la dernière heure de la base de données
+    latest_time = result_latest_time['latest_time'][0]
+
+    # Calculer le temps 24 heures avant la dernière heure
+    time_24h_ago = latest_time - timedelta(hours=24)
+
+    # Créer la requête SQL pour obtenir la moyenne du prix du cours au cours des 24 dernières heures
+    query_avg_price = f"""
+        SELECT AVG(close) AS avg_close
+        FROM btcusdt
+        WHERE close_time BETWEEN '{time_24h_ago}' AND '{latest_time}';
+    """
+
+    # Exécuter la requête SQL et récupérer le résultat
+    result_avg_price = execute_query(query_avg_price)
+
+    # Retourner le prix moyen
+    return result_avg_price['avg_close'][0]
 
 @app.get("/ohlcv")
 def get_ohlcv(nb_days: int = None):
@@ -102,8 +141,6 @@ def get_ohlcv(nb_days: int = None):
 
     return result.to_dict(orient='records')
 
-
-
 @app.get("/prices")
 def get_prices(nb_day: int):
     """
@@ -129,7 +166,6 @@ def get_prices(nb_day: int):
     print(result)
 
     return {'prices': result['average_close'].values.tolist()}
-
 
 
 @app.post("/predict")
@@ -160,3 +196,38 @@ def predict(input: Input):
     prediction = scaler.inverse_transform(prediction)
 
     return {'prediction': prediction.tolist()[0][0]}
+
+
+@app.get("/avg_price_24h")
+def avg_price_24h():
+    """Route pour obtenir le prix moyen du cours de bitcoin au cours des 24 dernières heures.
+
+    Returns:
+        dict: Un dictionnaire avec la clé 'avg_price_24h' et le prix moyen comme valeur.
+    """
+    avg_price = get_avg_price_24h()
+    return {"avg_price_24h": avg_price}
+
+@app.get("/latest_price")
+async def latest_price():
+    """
+    Récupère le dernier prix du BTC à partir de la base de données TimescaleDB.
+
+    Returns:
+    dict: Un dictionnaire avec la clé "latest_price" et le dernier prix comme valeur.
+    """
+
+    # Récupérer le dernier prix du BTC depuis la base de données TimescaleDB
+    query = "SELECT close FROM btcusdt ORDER BY close_time DESC LIMIT 1"
+
+    # Exécuter la requête SQL et récupérer le résultat
+    result = execute_query(query)
+
+    # Vérifier si des données ont été retournées
+    if result.empty:
+        raise HTTPException(status_code=404, detail="No price data found.")
+
+    # Récupérer le dernier prix
+    latest_price = result['close'][0]
+
+    return {"latest_price": latest_price}
