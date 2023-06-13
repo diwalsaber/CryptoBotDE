@@ -6,7 +6,6 @@ def create_data_db_schema():
     connection = None
     try:
         connection = DBConnector.get_data_db_connection()
-        print(connection)
         cursor = connection.cursor()
 
         #create Symbol table and its objects (sequence, index..)
@@ -81,7 +80,6 @@ def create_data_db_schema():
         cursor.execute("CREATE INDEX  IF NOT EXISTS IDX_HIST_CLOSETIME ON CandleStickRealTime(CLOSETIME)")
         connection.commit()
     except (Exception, psycopg2.DatabaseError) as error:
-        print('--------------1')
         print(error)
     finally:
         DBConnector.return_data_db_connection(connection)

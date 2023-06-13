@@ -1,50 +1,53 @@
+import os
 import datetime
 import numpy as np
 from typing import Optional
 
+import uvicorn
 from fastapi import FastAPI, status, HTTPException, Depends
 from keras.preprocessing.sequence import TimeseriesGenerator
 from starlette.responses import HTMLResponse
 
 import ModelUtils
+from create_schema import create_data_db_schema, create_app_db_schema
 from cryptobot.common import DBUtils
+from cryptobot.common.DBUtils import add_history_config, get_ohlcv_from_db, get_prices_from_db, \
+    get_latest_prices_from_db, get_avg_price_24h
 from cryptobot.common.exceptions import CryptoException
 
 from schemas import UserAuth, TokenSchema, HistoryConfigInput, CreateModelInput, ApiKeyInput, APIKey, \
-    RefreshInput
+    RefreshInput, Input
 from fastapi.security import OAuth2PasswordRequestForm
 
 from authenticationutils import get_hashed_password, get_current_user, verify_password, create_access_token, \
     create_refresh_token, is_admin, create_api_key, get_api_keys, revoke_api_key, revoke_api_keys, \
     get_refresh_current_user
-from data_collectors.history_data_collector_api import download_missing_symbol_data, interpolate_missing_for_symbol
+from data_collectors.history_data_collector_api import download_missing_symbol_data
 
-from data_collectors.history_data_collector_zip import download_period_symbol_data, load_all_csv_in_dir
+from data_collectors.history_data_collector_zip import download_period_symbol_data, load_all_csv_in_dir, unzip_all
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Define API object
 api = FastAPI(
     title='Crypto Prediction API',openapi_tags=[
     {
-        'name': 'general',
-        'description': 'Common Functions'
+        'name': 'Public',
+        'description': 'Public Endpoints'
     },
     {
-        'name': 'model',
-        'description': 'Model Functions'
-    },
-    {
-        'name': 'admin',
-        'description': 'Administration functions'
-    },
-    {
-        'name': 'history_data',
-        'description': 'History data functions'
+        'name': 'Admin',
+        'description': 'Public Endpoints'
     }
 ]
 )
 
+#init db  if not yet initialized
+#create and init the databases schemas
+create_data_db_schema()
+add_history_config('BTCUSDT','1m',datetime.datetime.strptime('17/07/2017 00:00:00', '%d/%m/%Y %H:%M:%S'),'data')
+create_app_db_schema()
 
-@api.get('/', summary="Welcome Page", response_class=HTMLResponse, tags=['general'])
+@api.get('/', summary="Welcome Page", response_class=HTMLResponse, tags=['Public'])
 def home():
     return '''
     <html>
@@ -71,7 +74,7 @@ def home():
     </html>
     '''
 
-@api.post('/signup', summary="Create new user", tags=['general'])
+@api.post('/signup', summary="Create new user", tags=['Public'])
 def create_user(data: UserAuth):
     # querying database to check if user already exist
     try:
@@ -89,7 +92,7 @@ def create_user(data: UserAuth):
         )
 
 
-@api.post('/signin', summary="Create access and refresh tokens for user", response_model=TokenSchema, tags=['general'])
+@api.post('/signin', summary="Create access and refresh tokens for user", response_model=TokenSchema, tags=['Public'])
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     try:
         user = DBUtils.get_user(form_data.username)
@@ -117,7 +120,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
                 detail={'message':e.message, 'code':e.code}
             )
 
-@api.post('/refresh', tags=['general'])
+@api.post('/refresh', tags=['Public'])
 def refresh_token(refreshInput:RefreshInput):
     try:
         user = get_refresh_current_user(refreshInput.refresh_key)
@@ -132,7 +135,7 @@ def refresh_token(refreshInput:RefreshInput):
 
     return {'access_token': access_token}
 
-@api.post('/apiKey', summary="Create api key for user", response_model=APIKey, tags=['general'])
+@api.post('/apiKey', summary="Create api key for user", response_model=APIKey, tags=['Public'])
 def apiKey(apikeyInput:ApiKeyInput, user: UserAuth = Depends(get_current_user)):
     try:
         api_key, expire_datetime = create_api_key(user['email'], apikeyInput.validityInDays)
@@ -143,7 +146,7 @@ def apiKey(apikeyInput:ApiKeyInput, user: UserAuth = Depends(get_current_user)):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={'message':e.message, 'code':e.code}
             )
-@api.get('/apyKeys', summary="get current user api keys", response_model=list[APIKey], tags=['general'])
+@api.get('/apyKeys', summary="get current user api keys", response_model=list[APIKey], tags=['Public'])
 def apiKeys(user: UserAuth = Depends(get_current_user)):
     try:
         return get_api_keys(user['email'])
@@ -152,7 +155,7 @@ def apiKeys(user: UserAuth = Depends(get_current_user)):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={'message':e.message, 'code':e.code}
             )
-@api.get('/revoke/{key}', summary="Revoke user's api key by key value or key name", tags=['general'])
+@api.get('/revoke/{key}', summary="Revoke user's api key by key value or key name", tags=['Public'])
 def revokeKey(key:str, user: UserAuth = Depends(get_current_user)):
     try:
          revoke_api_key(user['email'], key)
@@ -162,7 +165,7 @@ def revokeKey(key:str, user: UserAuth = Depends(get_current_user)):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={'message':e.message, 'code':e.code}
             )
-@api.get('/revokeAll', summary="Revoke all user api keys", tags=['general'])
+@api.get('/revokeAll', summary="Revoke all user api keys", tags=['Public'])
 def revokeKeys(user: UserAuth = Depends(get_current_user)):
     try:
          revoke_api_keys(user['email'])
@@ -173,16 +176,14 @@ def revokeKeys(user: UserAuth = Depends(get_current_user)):
                 detail={'message':e.message, 'code':e.code}
             )
 
-@api.get('/me', summary='Get details of currently logged in user', tags=['general'])
+@api.get('/me', summary='Get details of currently logged in user', tags=['Public'])
 def get_me(user: UserAuth = Depends(get_current_user)):
-    print(user)
-    print(type(user))
     return user
 
-@api.get('/models', tags=['model'])
-def models(include_deactivated:bool=False, user: UserAuth = Depends(get_current_user)):
+@api.get('/models', tags=['Admin'])
+def models(include_deactivated:bool=False, user: UserAuth = Depends(is_admin)):
     return DBUtils.get_models(include_deactivated)
-@api.post('/model', tags=['admin', 'model'])
+@api.post('/model', tags=['Admin'])
 async def create_model(create_model_input:CreateModelInput, user: UserAuth = Depends(is_admin)):
     model_id = ModelUtils.create_model(create_model_input)
     model = DBUtils.get_model(model_id)
@@ -192,11 +193,11 @@ async def create_model(create_model_input:CreateModelInput, user: UserAuth = Dep
         raise HTTPException(
             status_code=404, detail=f"Model with ID {model_id} not found"
         )
-@api.get('/model/{model_id}', tags=['model'])
-def get_model(model_id:int, user: UserAuth = Depends(get_current_user)):
+@api.get('/model/{model_id}', tags=['Admin'])
+def get_model(model_id:int, user: UserAuth = Depends(is_admin)):
     return DBUtils.get_model(model_id)
 
-@api.delete('/model/{model_id}', tags=['admin', 'model'])
+@api.delete('/model/{model_id}', tags=['Admin'])
 def delete_model(model_id:int, user: UserAuth = Depends(is_admin)):
     if DBUtils.delete_model_by_id(model_id):
         return {'status':'success'}
@@ -206,22 +207,22 @@ def delete_model(model_id:int, user: UserAuth = Depends(is_admin)):
         )
 
 #admin endpoints
-@api.put('/model/{model_id}/activate', tags=['admin', 'model'])
+@api.put('/model/{model_id}/activate', tags=['Admin'])
 def activate_model(model_id:int, user: UserAuth = Depends(is_admin)):
     return DBUtils.activate_model(model_id)
-@api.put('/model/{model_id}/deactivate', tags=['admin', 'model'])
+@api.put('/model/{model_id}/deactivate', tags=['Admin'])
 def deactivate_model(model_id:int, user: UserAuth = Depends(is_admin)):
     return DBUtils.deactivate_model(model_id)
 
-@api.post('/model/{model_id}/predict', name='Get the prediction of next interval', tags=['model'])
-def post_predict(model_id:int, user: UserAuth = Depends(get_current_user)):
+@api.post('/model/{model_id}/predict', name='Get the prediction of next interval', tags=['Admin'])
+def post_predict(model_id:int, user: UserAuth = Depends(is_admin)):
     modelDict = ModelUtils.Models.get_instance().get_model_by_id(model_id)
     if modelDict and modelDict['features_scaler'] and modelDict['target_scaler'] and modelDict['model']:
-        # Convertir les donn�es en DataFrame
+        # Convertir les donn�es en DataFrame
         model_info = DBUtils.get_model(model_id)
         data = ModelUtils.load_prediction_data(model_id)
 
-        # Normaliser les donn�es
+        # Normaliser les donn�es
         data_scaled = modelDict['features_scaler'].transform(data[model_info['features'].split(',')])
 
         prediction_list = []
@@ -249,70 +250,76 @@ def post_predict(model_id:int, user: UserAuth = Depends(get_current_user)):
             detail={'message': f'Model with ID {model_id} not found!'}
         )
 
-@api.post('/model/predict', name='Get the prediction of the active model', tags=['model'])
+@api.post('/model/predict', name='Get the prediction of the active model', tags=['Public'])
 def post_predict_active_model(symbol:str, interval:str, nb_future: int=1, user: UserAuth = Depends(get_current_user)):
-    modelDict = Models.get_instance().get_model_by_symbol(symbol, interval)
+    modelDict = ModelUtils.Models.get_instance().get_model_by_symbol(symbol, interval)
     if modelDict and modelDict['features_scaler'] and modelDict['target_scaler'] and modelDict['model']:
-        # Convertir les donn�es en DataFrame
+        # Convertir les données en DataFrame
         model_id = DBUtils.get_id_model_active(symbol, interval)
-        model_info = DBUtils.get_model(model_id)
-        data = ModelUtils.load_prediction_data(model_id)
+        if model_id:
+            model_info = DBUtils.get_model(model_id)
+            data = ModelUtils.load_prediction_data(model_id)
 
-        # Normaliser les donn�es
-        data_scaled = modelDict['features_scaler'].transform(data[model_info['features'].split(',')])
+            # Normaliser les donn�es
+            data_scaled = modelDict['features_scaler'].transform(data[model_info['features'].split(',')])
 
-        prediction_list = []
-        date_prediction_list = []
+            prediction_list = []
+            date_prediction_list = []
 
-        # compute prediction date
-        date_prediction = ModelUtils.get_moving_data(30, modelDict['interval'], modelDict['lookback'])['close_time'].iloc[-1]
-        date_prediction = datetime.datetime.strptime(str(date_prediction), '%Y-%m-%d %H:%M:%S') 
-        date_prediction = date_prediction.strftime('%Y-%m-%d')
-        for i in range(nb_future):
-            date_prediction = datetime.datetime.strptime(date_prediction, "%Y-%m-%d")
-            date_prediction = date_prediction + datetime.timedelta(days=1)
+            # compute prediction date
+            date_prediction = ModelUtils.get_moving_data(30, modelDict['interval'], modelDict['lookback'])['close_time'].iloc[-1]
+            date_prediction = datetime.datetime.strptime(str(date_prediction), '%Y-%m-%d %H:%M:%S')
             date_prediction = date_prediction.strftime('%Y-%m-%d')
-            date_prediction_list.append(date_prediction)
+            for i in range(nb_future):
+                date_prediction = datetime.datetime.strptime(date_prediction, "%Y-%m-%d")
+                date_prediction = date_prediction + datetime.timedelta(days=1)
+                date_prediction = date_prediction.strftime('%Y-%m-%d')
+                date_prediction_list.append(date_prediction)
 
-        # prediction on a list of lookback values at least
-        if len(data) >= modelDict['lookback']:
-            # the last sequence is not included
-            #if len(data) > modelDict['lookback']:
-            #    generator = TimeseriesGenerator(data_scaled, data_scaled, length=modelDict['lookback'], batch_size=1, stride=1)
-            #    prediction = modelDict['model'].predict(generator)
-            #    prediction = modelDict['target_scaler'].inverse_transform(prediction)
-            #    prediction_list = prediction.flatten().tolist()
+            # prediction on a list of lookback values at least
+            if len(data) >= modelDict['lookback']:
+                # the last sequence is not included
+                #if len(data) > modelDict['lookback']:
+                #    generator = TimeseriesGenerator(data_scaled, data_scaled, length=modelDict['lookback'], batch_size=1, stride=1)
+                #    prediction = modelDict['model'].predict(generator)
+                #    prediction = modelDict['target_scaler'].inverse_transform(prediction)
+                #    prediction_list = prediction.flatten().tolist()
 
-            while nb_future >=1 :
-                # for the last sequence
-                data_scaled = data_scaled[-modelDict['lookback']:]
-                data_scaled_reshaped = data_scaled.reshape(1, data_scaled.shape[0], data_scaled.shape[1])
-                prediction = modelDict['model'].predict(data_scaled_reshaped)
-                prediction_unscaled = modelDict['target_scaler'].inverse_transform(prediction)
-                prediction_list.append(prediction_unscaled.flatten()[0].item())
+                while nb_future >=1 :
+                    # for the last sequence
+                    data_scaled = data_scaled[-modelDict['lookback']:]
+                    data_scaled_reshaped = data_scaled.reshape(1, data_scaled.shape[0], data_scaled.shape[1])
+                    prediction = modelDict['model'].predict(data_scaled_reshaped)
+                    prediction_unscaled = modelDict['target_scaler'].inverse_transform(prediction)
+                    prediction_list.append(prediction_unscaled.flatten()[0].item())
 
-                # Transforme data de type np.array en type list afin de rajouter la derni�re prediction
-                data_scaled = data_scaled.flatten().tolist()
-                # data contient les donn�es normalis�es
-                data_scaled.append(prediction.flatten()[0].item())
-                # Transforme la liste en np.array (array de 1 colonne), format utiliser pour la pr�diction
-                data_scaled = np.array(data_scaled, dtype=float).reshape(-1,1)
+                    # Transforme data de type np.array en type list afin de rajouter la derni�re prediction
+                    data_scaled = data_scaled.flatten().tolist()
+                    # data contient les donn�es normalis�es
+                    data_scaled.append(prediction.flatten()[0].item())
+                    # Transforme la liste en np.array (array de 1 colonne), format utiliser pour la pr�diction
+                    data_scaled = np.array(data_scaled, dtype=float).reshape(-1,1)
 
-                nb_future -= 1
+                    nb_future -= 1
 
-        return {
-            'date_prediction': date_prediction_list,
-            'prediction': prediction_list
-        }
+            return {
+                'date_prediction': date_prediction_list,
+                'prediction': prediction_list
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_BAD_REQUEST,
+                detail={'message': f'Model active with symbol {symbol} and interval {interval} not found!'}
+            )
     else:
         raise HTTPException(
-            status_code=status.HTTP_404_BAD_REQUEST,
-            detail={'message': f'Model active with symbol {symbol} and interval {interval} not found!'}
-        )
+               status_code=status.HTTP_404_BAD_REQUEST,
+                detail={'message': f'Model active with symbol {symbol} and interval {interval} not found!'}
+            )
     
-@api.post('/model/info', name='Get the information of the active model', tags=['model'])
+@api.post('/model/info', name='Get the information of the active model', tags=['Public'])
 def post_info_active_model(symbol:str, interval:str, user: UserAuth = Depends(get_current_user)):
-    modelDict = Models.get_instance().get_model_by_symbol(symbol, interval)
+    modelDict = ModelUtils.Models.get_instance().get_model_by_symbol(symbol, interval)
     if modelDict and modelDict['features_scaler'] and modelDict['target_scaler'] and modelDict['model']:
         model_id = DBUtils.get_id_model_active(symbol, interval)
         model_info = DBUtils.get_model(model_id)
@@ -324,15 +331,15 @@ def post_info_active_model(symbol:str, interval:str, user: UserAuth = Depends(ge
             detail={'message': f'Model active with symbol {symbol} and interval {interval} not found!'}
         )    
 
-@api.post('/history_config', tags=['history_data', 'admin'])
+@api.post('/history_config', tags=['Admin'])
 def add_historyconfig(hist_config:HistoryConfigInput, user: UserAuth = Depends(is_admin)):
     return DBUtils.add_history_config(hist_config.symbol, hist_config.interval, hist_config.startdate, hist_config.dir)
 
-@api.get('/history_configs', tags=['history_data', 'admin'])
-def get_history_configs(user: UserAuth = Depends(get_current_user)):
+@api.get('/history_configs', tags=['Admin'])
+def get_history_configs(user: UserAuth = Depends(is_admin)):
     return DBUtils.get_history_configs()
 
-@api.get('/history_config/{config_id}', tags=['history_data', 'admin'])
+@api.get('/history_config/{config_id}', tags=['Admin'])
 def get_history_config(config_id:int, user: UserAuth = Depends(is_admin)):
     hist = DBUtils.get_history_config(config_id)
     if hist:
@@ -342,7 +349,7 @@ def get_history_config(config_id:int, user: UserAuth = Depends(is_admin)):
             status_code=404, detail=f"History configuration with ID {config_id} not found"
         )
 
-@api.get('/history_config/{config_id}/startdownload', tags=['history_data', 'admin'])
+@api.get('/history_config/{config_id}/startdownload', tags=['Admin'])
 async def start_history_download(config_id:int, user: UserAuth = Depends(is_admin)):
     try:
         history_config = get_history_config(config_id, user)
@@ -350,18 +357,19 @@ async def start_history_download(config_id:int, user: UserAuth = Depends(is_admi
             download_period_symbol_data(destination_dir=history_config['dir'], start_datetime=history_config['startdate'],
                                     end_datetime=datetime.datetime.now(), symbol=history_config['symbol'],
                                     interval=history_config['interval'])
-
-            load_all_csv_in_dir(history_config['dir'])
+            unzip_all(history_config['symbol'], history_config['interval'])
+            load_all_csv_in_dir(history_config['dir'], history_config['symbol'], history_config['interval'])
             download_missing_symbol_data(history_config['symbol'], history_config['interval'], history_config['startdate'])
             #interpolate_missing_for_symbol(symbol=history_config['symbol'], start_datetime=history_config['startdate'])
             return {'status':'success'}
     except Exception as e:
+        print(e)
         raise HTTPException(
             status_code=500, detail=f"Error starting data download for config_id:{config_id}"
         )
 
 
-@api.get('/data', name='Get the data on the database' , tags=['history_data'])
+@api.get('/data', name='Get the data on the database' , tags=['Public'])
 async def get_data(nb_records: Optional[int]=3, interval: Optional[str]="1 day", mov_avg: Optional[int]=30, user: UserAuth = Depends(get_current_user)):
     """Get the data (open price, open time, close price, high price, close price, low price, volume) on the database for BTC/USDT
     """
@@ -388,3 +396,65 @@ async def get_data(nb_records: Optional[int]=3, interval: Optional[str]="1 day",
         'base_volume': base_volume.flatten().tolist(),
         'moving_average': moving_average.flatten().tolist()
     }
+
+@api.get("/ohlcv", tags=['Public'])
+def get_ohlcv(nb_days: int = None, user: UserAuth = Depends(get_current_user)):
+    """
+    Récupère toutes les valeurs OHLCV à partir de la base de données TimescaleDB.
+
+    Args:
+        nb_days (int, optional): Le nombre de jours à récupérer.
+                                 Si non défini, toutes les données sont récupérées.
+
+    Returns:
+        dict: Un dictionnaire contenant toutes les données OHLCV disponibles.
+    """
+
+    # Récupérer toutes les valeurs OHLCV depuis la base de données TimescaleDB
+
+    result = get_ohlcv_from_db(nb_days)
+
+    return result.to_dict(orient='records')
+
+@api.get("/prices", tags=['Public'])
+def get_prices(nb_day: int, user: UserAuth = Depends(get_current_user)):
+    """
+    Récupère les dernières valeurs du close price à partir de la base de données TimescaleDB.
+
+    Args:
+    count (int): Le nombre de valeurs à récupérer.
+
+    Returns:
+    dict: Un dictionnaire avec la clé "prices" et la liste des prix de clôture comme valeur.
+    """
+
+    result = get_prices_from_db(nb_day)
+    return {'prices': result['average_close'].values.tolist()}
+
+
+@api.get("/avg_price_24h", tags=['Public'])
+def avg_price_24h(user: UserAuth = Depends(get_current_user)):
+    """Route pour obtenir le prix moyen du cours de bitcoin au cours des 24 dernières heures.
+
+    Returns:
+        dict: Un dictionnaire avec la clé 'avg_price_24h' et le prix moyen comme valeur.
+    """
+    avg_price = get_avg_price_24h()
+    return {"avg_price_24h": avg_price}
+
+@api.get("/latest_price", tags=['Public'])
+async def latest_price(user: UserAuth = Depends(get_current_user)):
+    """
+    Récupère le dernier prix du BTC à partir de la base de données TimescaleDB.
+
+    Returns:
+    dict: Un dictionnaire avec la clé "latest_price" et le dernier prix comme valeur.
+    """
+    result = get_latest_prices_from_db()
+    latest_price = result['close'][0]
+
+    return {"latest_price": latest_price}
+
+
+if __name__ == "__main__":
+    uvicorn.run("apiapp:api", host="0.0.0.0", log_level="info", limit_concurrency=10, workers=10)

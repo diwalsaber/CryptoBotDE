@@ -1,6 +1,6 @@
 import os
-from datetime import datetime
-
+from datetime import datetime, timedelta
+import pandas as pd
 from cryptobot.common.exceptions import ExistingUser, NotExistingUser
 from cryptobot.common import cryptoutils
 from cryptobot.common.cryptoutils import DBConnector
@@ -367,9 +367,22 @@ def get_history_configs():
     try:
         connection = DBConnector.get_data_db_connection()
         cursor = connection.cursor()
-        cursor.execute("""select h.id, s.name, h.interval,h.dir,h.startdate  from historydataconfig h left join symbol s on s.symbolId = h.symbolid""")
+        cursor.execute("""select h.id, s.name, h.interval,h.dir,h.startdate  from historydataconfig h 
+        left join symbol s on s.symbolId = h.symbolid""")
         rows = cursor.fetchall()
         return [{'id':row[0],'symbol':f"{row[1]}",'interval':f"{row[2]}", 'dir':f"{row[3]}",'startdate':row[4]} for row in rows]
+    finally:
+        DBConnector.return_data_db_connection(connection)
+
+def get_history_config_by_symbol(symbol:str, interval:str):
+    try:
+        connection = DBConnector.get_data_db_connection()
+        cursor = connection.cursor()
+        cursor.execute(f"""select h.id, s.name, h.interval,h.dir,h.startdate  from historydataconfig h left join symbol s on s.symbolId = h.symbolid 
+        where s.name = '{symbol}' and interval = '{interval}'""")
+        row = cursor.fetchone()
+        if row:
+            return {'id':row[0],'symbol':f"{row[1]}",'interval':f"{row[2]}", 'dir':f"{row[3]}",'startdate':row[4]}
     finally:
         DBConnector.return_data_db_connection(connection)
 
@@ -400,3 +413,128 @@ def get_max_start_date(symbolid:int, interval:str):
     finally:
         DBConnector.return_data_db_connection(connection)
 
+
+
+def create_tmp_table(table_name:str):
+    try:
+        connection = DBConnector.get_data_db_connection()
+        cursor = connection.cursor()
+        cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+        cursor.execute(f"""
+                                    CREATE TABLE IF NOT EXISTS {table_name} (
+                                    open_time bigint,
+                                    open_price FLOAT,
+                                    high_price FLOAT,
+                                    low_price FLOAT,
+                                    close_price FLOAT,
+                                    base_volume FLOAT,
+                                    close_time bigint,
+                                    quote_volume FLOAT,
+                                    number_trades FLOAT,
+                                    taker_buy_base FLOAT,
+                                    taker_buy_quote FLOAT,
+                                    ignore FLOAT
+                                    );
+                                """)
+        connection.commit()
+    finally:
+        DBConnector.return_data_db_connection(connection)
+
+
+def get_ohlcv_from_db(nb_days: int = None):
+    """
+    Récupère toutes les valeurs OHLCV à partir de la base de données TimescaleDB.
+
+    Args:
+        nb_days (int, optional): Le nombre de jours à récupérer.
+                                 Si non défini, toutes les données sont récupérées.
+
+    Returns:
+        dict: Un dictionnaire contenant toutes les données OHLCV disponibles.
+    """
+
+    # Récupérer toutes les valeurs OHLCV depuis la base de données TimescaleDB
+    query = f"""
+            SELECT 
+                time_bucket('1 day', opentime) AS day,
+                first(openprice, opentime) AS open,
+                max(highprice) AS high,
+                min(lowprice) AS low,
+                last(ClosePrice, closetime) AS close,
+                sum(BaseVolume) as volume
+            FROM 
+                CandleStickHistorical
+            GROUP BY 
+                day
+            ORDER BY 
+                day DESC
+            """
+
+
+    if nb_days is not None:
+        query += f" LIMIT {nb_days};"
+    try:
+        connection = DBConnector.get_data_db_connection()
+        return pd.read_sql_query(query, connection)
+    finally:
+        DBConnector.return_data_db_connection(connection)
+
+def get_prices_from_db(nb_days: int = None):
+
+
+    # Récupérer toutes les valeurs OHLCV depuis la base de données TimescaleDB
+    query = f"""
+                SELECT time_bucket('1440 minutes', closetime) AS day, AVG(closeprice) AS average_close
+                FROM CandleStickHistorical
+                GROUP BY day
+                ORDER BY day DESC
+                """
+
+    if nb_days is not None:
+        query += f" LIMIT {nb_days};"
+    try:
+        connection = DBConnector.get_data_db_connection()
+        return pd.read_sql_query(query, connection)
+    finally:
+        DBConnector.return_data_db_connection(connection)
+def get_avg_price_24h():
+    """Récupère le prix moyen du cours de bitcoin au cours des 24 dernières heures.
+
+    Returns:
+        float: Le prix moyen du cours de bitcoin au cours des 24 dernières heures.
+    """
+    try:
+        # Créer la requête SQL pour obtenir la dernière heure de la base de données
+        query_latest_time = "SELECT MAX(closetime) AS latest_time FROM CandleStickHistorical;"
+        connection = DBConnector.get_data_db_connection()
+        result_latest_time = pd.read_sql_query(query_latest_time, connection)
+
+        # Obtenir la dernière heure de la base de données
+        latest_time = result_latest_time['latest_time'][0]
+
+        # Calculer le temps 24 heures avant la dernière heure
+        time_24h_ago = latest_time - timedelta(hours=24)
+
+        # Créer la requête SQL pour obtenir la moyenne du prix du cours au cours des 24 dernières heures
+        query_avg_price = f"""
+        SELECT AVG(closeprice) AS avg_close
+        FROM CandleStickHistorical
+        WHERE closetime BETWEEN '{time_24h_ago}' AND '{latest_time}';"""
+
+        # Exécuter la requête SQL et récupérer le résultat
+        result_avg_price =  pd.read_sql_query(query_avg_price, connection)
+        # Retourner le prix moyen
+        return result_avg_price['avg_close'][0]
+
+    finally:
+        DBConnector.return_data_db_connection(connection)
+
+
+def get_latest_prices_from_db():
+    try:
+        # Récupérer toutes les valeurs OHLCV depuis la base de données TimescaleDB
+        query = "SELECT closeprice as close FROM CandleStickHistorical order by closetime desc limit 1"
+        connection = DBConnector.get_data_db_connection()
+        return pd.read_sql_query(query, connection)
+    finally:
+        DBConnector.return_data_db_connection(connection)

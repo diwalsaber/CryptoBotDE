@@ -12,7 +12,7 @@ import calendar
 from threading import Thread
 import zipfile
 
-from cryptobot.common.DBUtils import is_loaded_csv, add_loaded_csv
+from cryptobot.common.DBUtils import is_loaded_csv, add_loaded_csv, create_tmp_table
 from cryptobot.common import cryptoutils, DBUtils
 from cryptobot.common.cryptoutils import DBConnector, Configuration
 
@@ -27,7 +27,6 @@ def download_history_data():
         """
     threads = []
     for pair_conf in DBUtils.get_history_configs():
-        print(pair_conf['startdate'])
         thread = Thread(target=download_period_symbol_data,
                         args=(pair_conf['dir'], pair_conf['startdate'], datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days = 1),
                               pair_conf['symbol'], pair_conf['interval']))
@@ -90,7 +89,7 @@ def download_url(url, save_path, chunk_size=1024):
             print(f"File not found: {url}")
         return r.status_code
     except Exception as e:
-        print(f'Error dowloading {url}')
+        print(f'Error dowloading {url}:',e)
 
 
 def download_period_symbol_data(destination_dir:str, start_datetime:datetime, end_datetime:datetime, symbol:str, interval:str):
@@ -120,8 +119,6 @@ def download_period_symbol_data(destination_dir:str, start_datetime:datetime, en
                 day += 1
         # start_date = 1st day of next month
         start_datetime = (start_datetime.replace(day=1) + timedelta(days=32)).replace(day=1)
-        print('start_datetime=',start_datetime)
-        print('end_datetime=', end_datetime)
 
 
 def delete_month_daily_files(destination_dir, symbol, year, month, interval):
@@ -139,27 +136,54 @@ def unzip_file(file_path, destination_dir):
     print(f'unzip {file_path} into {destination_dir}')
     with zipfile.ZipFile(file_path, 'r') as zip_ref:
         zip_ref.extractall(destination_dir)
-def unzip_all():
-    for conf in DBUtils.get_history_configs():
-        unzip_files_in_dir(conf['dir'])
-def unzip_files_in_dir(data_dir):
+def unzip_all(symbol:str=None, interval:str=None):
+    if symbol and interval:
+        conf = DBUtils.get_history_config_by_symbol(symbol, interval)
+        if conf:
+            unzip_files_in_dir(conf['dir'], symbol, interval)
+    else:
+        for conf in DBUtils.get_history_configs():
+            unzip_files_in_dir(conf['dir'], conf['symbol'], conf['interval'])
+def unzip_files_in_dir(data_dir, symbol:str=None, interval:str=None):
     entries = os.listdir(data_dir)
     for entry in entries:
         if entry.endswith(".zip"):
-            unzip_file(data_dir + '/' + entry, data_dir)
+            prefix = symbol
+            if interval and symbol:
+                prefix += '-'+interval
+            if prefix:
+                if entry.startswith(prefix):
+                    unzip_file(data_dir + '/' + entry, data_dir)
+            else:
+                unzip_file(data_dir + '/' + entry, data_dir)
 
-def load_csv():
+def load_csv(symbol:str=None, interval:str=None):
+    if symbol and interval:
+        conf = DBUtils.get_history_config_by_symbol(symbol, interval)
+        load_all_csv_in_dir(conf['dir'], symbol, interval)
+    else:
+        for conf in DBUtils.get_history_configs():
+            load_all_csv_in_dir(conf['dir'], conf['symbol'], conf['interval'])
     for conf in DBUtils.get_history_configs():
         load_all_csv_in_dir(conf['dir'])
-def load_all_csv_in_dir(data_dir):
+def load_all_csv_in_dir(data_dir,symbol:str=None, interval:str=None):
     try:
         connection = DBConnector.get_data_db_connection()
         cursor = connection.cursor()
         entries = os.listdir(data_dir)
         for entry in entries:
             if entry.endswith(".csv") and not is_loaded_csv(entry):
-                load_csv_in_db(cursor, data_dir, entry)
-                add_loaded_csv(entry)
+                prefix = symbol
+                if interval and symbol:
+                    prefix += '-' + interval
+                if prefix:
+                    if entry.startswith(prefix):
+                        load_csv_in_db(cursor, data_dir, entry)
+                        add_loaded_csv(entry)
+                else:
+                    load_csv_in_db(cursor, data_dir, entry)
+                    add_loaded_csv(entry)
+
                 connection.commit()
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
@@ -174,32 +198,16 @@ def load_csv_in_db(cursor, data_dir, filename):
     # Récupérer l'ID du symbole
     symbolId = cryptoutils.get_symbol_id(symbol)
     print('DB loading file :',filename)
-    cursor.execute("DROP TABLE IF EXISTS TMP")
-    cursor.execute("""
-            CREATE TABLE IF NOT EXISTS TMP (
-            open_time bigint,
-            open_price FLOAT,
-            high_price FLOAT,
-            low_price FLOAT,
-            close_price FLOAT,
-            base_volume FLOAT,
-            close_time bigint,
-            quote_volume FLOAT,
-            number_trades FLOAT,
-            taker_buy_base FLOAT,
-            taker_buy_quote FLOAT,
-            ignore FLOAT
-            );
-        """)
+    table_name = 'tmp_2'
+    create_tmp_table(table_name)
 
     # Ouvrir le fichier CSV et créer un objet reader
     with open(filepath, 'r') as file:
-        cursor.copy_expert(
-                """COPY TMP (open_time,open_price,high_price,low_price,close_price,base_volume,close_time,
+        cursor.copy_expert(f"""COPY {table_name} (open_time,open_price,high_price,low_price,close_price,base_volume,close_time,
                 quote_volume,number_trades,taker_buy_base,taker_buy_quote,ignore) FROM STDIN WITH csv"""
                 ,file)
     cursor.execute(f"""INSERT INTO CandleStickHistorical 
                                     (select to_timestamp(open_time/1000),{symbolId},open_price,high_price,low_price,
                                     close_price,base_volume,to_timestamp(close_time/1000),quote_volume,
-                                    number_trades,taker_buy_base,taker_buy_quote from tmp ) ON CONFLICT DO NOTHING """)
-    cursor.execute("DROP TABLE IF EXISTS TMP")
+                                    number_trades,taker_buy_base,taker_buy_quote from {table_name} ) ON CONFLICT DO NOTHING """)
+    cursor.execute(f"DROP TABLE IF EXISTS {table_name}")

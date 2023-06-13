@@ -60,6 +60,14 @@ class PredictInput(BaseModel):
 
     def to_DataFrame(self):
         return pd.DataFrame([f.to_values_list() for f in self.features], columns=self.features[0].get_valid_columns())
+
+class Input(BaseModel):
+    """
+    Classe pour la validation de l'entrée.
+    data : liste des derniers prix de clôture du BTC
+    """
+    data: list[float]
+
 class TokenSchema(BaseModel):
     access_token:str
     refresh_token:str

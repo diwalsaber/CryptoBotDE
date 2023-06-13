@@ -25,3 +25,4 @@ yarl==1.8.2
 psycopg2==2.9.6
 psycopg2-binary==2.9.6
 PyYAML~=6.0
+pandas==2.0.1

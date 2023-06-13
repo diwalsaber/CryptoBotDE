@@ -4,7 +4,8 @@ import psycopg2
 from binance.client import Client
 
 from cryptobot.common import cryptoutils, DBUtils
-from cryptobot.common.cryptoutils import Configuration, DBConnector
+from cryptobot.common.DBUtils import create_tmp_table
+from cryptobot.common.cryptoutils import DBConnector
 
 api_key = ''
 api_secret = ''
@@ -78,36 +79,22 @@ def download_missing_symbol_data2(destination_data_dir, symbol, interval):
                                                             limit=1000):
             file.write(','.join(str(e) for e in kline)+'\n')
         file.close()
-        cursor.execute("DROP TABLE IF EXISTS TMP")
-        cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS TMP (
-                    open_time bigint,
-                    open_price FLOAT,
-                    high_price FLOAT,
-                    low_price FLOAT,
-                    close_price FLOAT,
-                    base_volume FLOAT,
-                    close_time bigint,
-                    quote_volume FLOAT,
-                    number_trades FLOAT,
-                    taker_buy_base FLOAT,
-                    taker_buy_quote FLOAT,
-                    ignore FLOAT
-                    );
-                """)
+        table_name = 'tmp_2'
+        create_tmp_table(table_name)
+
         with open((destination_data_dir+'/{}_{}.csv').format(symbol, interval), "r") as file:
-            cursor.copy_expert("""COPY TMP (open_time,open_price,high_price,low_price,close_price,base_volume,
+            cursor.copy_expert(f"""COPY {table_name} (open_time,open_price,high_price,low_price,close_price,base_volume,
                 close_time,quote_volume,number_trades,taker_buy_base,taker_buy_quote,ignore) 
                 FROM STDIN WITH csv HEADER""",file)
         connection.commit()
         cursor.execute(f"""INSERT INTO CandleStickHistorical 
                                     (select distinct to_timestamp(open_time/1000),{symbolId},open_price,high_price,low_price,
                                     close_price,base_volume,to_timestamp(close_time/1000),quote_volume,
-                                    number_trades,taker_buy_base,taker_buy_quote from tmp 
+                                    number_trades,taker_buy_base,taker_buy_quote from {table_name} 
                                         where to_timestamp(open_time/1000) 
                                             not IN (select opentime from CandleStickHistorical 
                                                     where opentime >  (select max(opentime) from CandleStickHistorical WHERE  opentime < current_timestamp - interval '2 DAYS')))""")
-        cursor.execute("DROP TABLE IF EXISTS TMP")
+        cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
         connection.commit()
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
@@ -119,37 +106,23 @@ def download_all_missing_data():
     for pair_conf in DBUtils.get_history_configs():
         download_missing_symbol_data(pair_conf['symbol'], pair_conf['startdate'], pair_conf['interval'])
 
-def download_missing_symbol_data(symbol, start_datetime, interval):
+def download_missing_symbol_data(symbol:str, start_datetime:str, interval:str):
     try:
         client = Client(api_key, api_secret)
         symbolId = cryptoutils.get_symbol_id(symbol)
         connection = DBConnector.get_data_db_connection()
         cursor = connection.cursor()
         cursor.execute(f'''with missing_intervals as (SELECT time_bucket_gapfill('1 hours', opentime, 'UTC', 
-        '{start_datetime.strftime("%Y-%m-%dT%H:%M:%SZ")}','{datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")}') AS my_time,
+        '{start_datetime.strptime("%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%dT%H:%M:%SZ")}',
+        '{datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")}') AS my_time,
 	count(*) as count_in_interval
     FROM candlestickhistorical
     WHERE symbolid = {symbolId}
     GROUP BY my_time)
 select * from missing_intervals where count_in_interval is null or count_in_interval < 60 order by 1''')
         rows = cursor.fetchall()
-        cursor.execute("DROP TABLE IF EXISTS TMP")
-        cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS TMP (
-                    open_time bigint,
-                    open_price FLOAT,
-                    high_price FLOAT,
-                    low_price FLOAT,
-                    close_price FLOAT,
-                    base_volume FLOAT,
-                    close_time bigint,
-                    quote_volume FLOAT,
-                    number_trades FLOAT,
-                    taker_buy_base FLOAT,
-                    taker_buy_quote FLOAT,
-                    ignore FLOAT
-                    );
-                """)
+        table_name = 'tmp_1'
+        create_tmp_table(table_name)
 
         periods = list(map(lambda x: (x[0], x[0]+datetime.timedelta(hours=1)), rows))
         merged_periods = merge_date_ranges(periods)
@@ -162,20 +135,22 @@ select * from missing_intervals where count_in_interval is null or count_in_inte
                                                                 start_str=str(start*1000),
                                                                 end_str=str(end*1000),
                                                                 limit=1000):
-                insert_query = "INSERT INTO TMP VALUES ({}/1000,{},{},{},{},{},{},{}/1000,{},{},{},{})" \
-                    .format(kline[0], kline[1], kline[2], kline[3], kline[4], kline[5], kline[6], kline[7], kline[8], kline[9], kline[10],
-                            kline[11])
+                insert_query = f"""INSERT INTO {table_name} VALUES 
+                                        ({kline[0]}/1000,{kline[1]},{kline[2]},
+                                        { kline[3]},{ kline[4]},{ kline[5]},
+                                        { kline[6]},{ kline[7]}/1000,{ kline[8]},
+                                        { kline[9]},{ kline[10]},{ kline[11]})"""
+
                 cursor.execute(insert_query)
             connection.commit()
-            query = """INSERT INTO CandleStickHistorical 
-                                    (select distinct to_timestamp(open_time/1000) AT TIME ZONE 'UTC',{},open_price,high_price,low_price,
+            query = f"""INSERT INTO CandleStickHistorical 
+                                    (select distinct to_timestamp(open_time/1000) AT TIME ZONE 'UTC',{symbolId},open_price,high_price,low_price,
                                     close_price,base_volume,to_timestamp(close_time/1000) AT TIME ZONE 'UTC',quote_volume,
-                                    number_trades,taker_buy_base,taker_buy_quote from tmp where open_price is not null) ON CONFLICT DO NOTHING """.format(symbolId)
+                                    number_trades,taker_buy_base,taker_buy_quote from {table_name} where open_price is not null) ON CONFLICT DO NOTHING """
             cursor.execute(query)
-            cursor.execute("TRUNCATE TMP")
+            cursor.execute(f"TRUNCATE {table_name}")
             connection.commit()
-
-        cursor.execute("DROP TABLE IF EXISTS TMP")
+        cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
         connection.commit()
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
@@ -204,48 +179,13 @@ def interpolate_missing_for_symbol(symbol):
         cursor.execute(sql)
 
         rows = cursor.fetchall()
-        cursor.execute("DROP TABLE IF EXISTS TMP")
-        cursor.execute("""
-                            CREATE TABLE IF NOT EXISTS TMP (
-                            open_time bigint,
-                            open_price FLOAT,
-                            high_price FLOAT,
-                            low_price FLOAT,
-                            close_price FLOAT,
-                            base_volume FLOAT,
-                            close_time bigint,
-                            quote_volume FLOAT,
-                            number_trades FLOAT,
-                            taker_buy_base FLOAT,
-                            taker_buy_quote FLOAT,
-                            ignore FLOAT
-                            );
-                        """)
 
         periods = list(map(lambda x: (x[0], x[0] + datetime.timedelta(hours=1)), rows))
         merged_periods = merge_date_ranges(periods)
-
-        cursor.execute("DROP TABLE IF EXISTS TMP")
-        cursor.execute("""
-                            CREATE TABLE IF NOT EXISTS TMP (
-                            open_time bigint,
-                            open_price FLOAT,
-                            high_price FLOAT,
-                            low_price FLOAT,
-                            close_price FLOAT,
-                            base_volume FLOAT,
-                            close_time bigint,
-                            quote_volume FLOAT,
-                            number_trades FLOAT,
-                            taker_buy_base FLOAT,
-                            taker_buy_quote FLOAT,
-                            ignore FLOAT
-                            );
-                        """)
+        table_name = 'tmp_1'
+        create_tmp_table('tmp_1')
 
         for period in merged_periods:
-            print('start:',period[0])
-            print('end:',period[1])
             sql = f"""WITH TMPTAB as (SELECT
                     time_bucket_gapfill('1 minutes', opentime, 'UTC',
                     to_timestamp('{period[0].strftime("%Y-%m-%d %H:%M:%S")}','YYYY-MM-DD HH24:MI:SS') - INTERVAL '1 day', 
@@ -264,7 +204,7 @@ def interpolate_missing_for_symbol(symbol):
                            AND opentime < to_timestamp('{period[1].strftime("%Y-%m-%d %H:%M:%S")}','YYYY-MM-DD HH24:MI:SS') + INTERVAL '1 day'
                            AND symbolid = {symbolId}
                    GROUP BY my_open_time)
-                   INSERT INTO TMP SELECT extract(epoch from my_open_time)*1000,
+                   INSERT INTO {table_name} SELECT extract(epoch from my_open_time)*1000,
                         openprice,
                         highprice,
                         lowprice,
@@ -279,13 +219,12 @@ def interpolate_missing_for_symbol(symbol):
 
             cursor.execute(sql)
             connection.commit()
-        query = """INSERT INTO CandleStickHistorical 
-                                            (select distinct to_timestamp(open_time/1000) AT TIME ZONE 'UTC',{},open_price,high_price,low_price,
+        query = f"""INSERT INTO CandleStickHistorical 
+                                            (select distinct to_timestamp(open_time/1000) AT TIME ZONE 'UTC',{symbolId},open_price,high_price,low_price,
                                             close_price,base_volume,to_timestamp(close_time/1000) AT TIME ZONE 'UTC',quote_volume,
-                                            number_trades,taker_buy_base,taker_buy_quote from tmp where open_price is not null) ON CONFLICT DO NOTHING """.format(
-            symbolId)
+                                            number_trades,taker_buy_base,taker_buy_quote from {table_name} where open_price is not null) ON CONFLICT DO NOTHING """
         cursor.execute(query)
-        cursor.execute("TRUNCATE TMP")
+        cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
         connection.commit()
     except Exception as e:
         print(e)
@@ -305,8 +244,4 @@ def merge_date_ranges(data):
             result.append(new_interval)
     return result
 
-
-download_all_missing_data()
-
-interpolate_all_missing_data()
 

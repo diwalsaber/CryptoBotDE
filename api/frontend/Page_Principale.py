@@ -6,7 +6,7 @@ st.set_page_config(
     )
 
 st.title("Bienvenue sur le  projet CryptoBot avec Binance - DataScientest 👋")
-#st.write("Bienvenue sur le  projet CryptoBot avec Binance - DataScientest 👋")
+
 
 st.sidebar.success("Selectionner une page ci-dessus")
 

@@ -1,8 +1,9 @@
+import os
+
 from fastapi import HTTPException, status
 from keras import Sequential
 from keras.callbacks import EarlyStopping
 from keras.layers import LSTM, Dense, Dropout
-from keras.losses import mean_absolute_error
 from keras.preprocessing.sequence import TimeseriesGenerator
 from typing import List
 import numpy as np
@@ -43,7 +44,6 @@ def make_data_sql_query_from_cols(feature_columns:List[str], target:str=None, in
         sql_query += ' desc'
     if limit >= 0:
         sql_query += f" limit {limit} "
-    print(sql_query)
     return sql_query
 
 def make_prediction_data_sql_query_from_cols(feature_columns:List[str], interval:str=None,limit:int=-1):
@@ -93,7 +93,6 @@ def preprocess_data(data, feature_columns, target_column, test_size=0.2, batch_s
     features_scaler = StandardScaler()
     target_scaler = StandardScaler()
     feats = features_scaler.fit_transform(data[[col.name for col in feature_columns]]).astype(float)
-    print(data.columns)
     target =target_scaler.fit_transform(data[[target_column.name]]).astype(float)
 
     X_train, X_test, y_train, y_test = train_test_split(feats, target, test_size=test_size, shuffle=False)
@@ -251,9 +250,24 @@ class Models(metaclass=Singleton):
         self.models = []
         db_models = DBUtils.get_models(True)
         for db_model in db_models:
-            self.add_model(db_model['id'], db_model['symbol'], db_model['interval'], db_model['lookback'],
-                           load_model(db_model['model_path']), joblib.load(db_model['features_scaler_path'])
-                           , joblib.load(db_model['target_scaler_path']))
+            if existsAndReadableFile(db_model['features_scaler_path']):
+                if existsAndReadableFile(db_model['target_scaler_path']):
+                    if existsAndReadableFile(db_model['model_path']):
+                        try:
+                            self.add_model(db_model['id'], db_model['symbol'], db_model['interval'],
+                                           db_model['lookback'],
+                                           load_model(db_model['model_path']),
+                                           joblib.load(db_model['features_scaler_path'])
+                                           , joblib.load(db_model['target_scaler_path']))
+                        except Exception as e:
+                            print(f"Cannot load model with id {db_model['id']}:", e)
+                    else:
+                        print(f"model [id={db_model['id']}] file missing or has no read right:{db_model['model_path']}")
+                else:
+                    print(f"model [id={db_model['id']}] target scaler file missing or has no read right:{db_model['target_scaler_path']}")
+            else:
+                print(f"model [id={db_model['id']}] features scaler file missing or has no read right:{db_model['features_scaler_path']}")
+
 
     @staticmethod
     def get_instance():
@@ -279,7 +293,8 @@ class Models(metaclass=Singleton):
         if len(filtered) > 0:
             return filtered[0]
 
-
+def existsAndReadableFile(filename):
+    os.path.isfile(filename) and os.access(filename, os.R_OK)
 def add_model(create_model_input:CreateModelInput, model, features_scaler, target_scaler, score):
     try:
         connection = DBConnector.get_app_db_connection()

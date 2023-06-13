@@ -11,13 +11,13 @@ RUN chown  -R opa /opt/opa
 USER opa
 
 WORKDIR /opt/opa/
-ADD api/frontend/Page_Principale.py .
-ADD api/frontend/requirements.txt .
-ADD api/frontend/pages pages
+ADD api/frontend2/*.py .
+ADD api/frontend2/requirements.txt .
+ADD api/frontend2/pages pages
 ADD cryptobot/ cryptobot/
 ADD config.yml .
 RUN ls -l
 RUN pip install -r ./requirements.txt
 
 EXPOSE 8501
-CMD python -m streamlit run Page_Principale.py
+CMD python -m streamlit run home.py

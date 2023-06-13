@@ -1,0 +1,26 @@
+FROM datascientestopa/tmp
+#FROM python:3.11.4
+
+
+#RUN pip3 install --no-cache --upgrade pip setuptools
+
+#RUN mkdir -p /opt/opa/cryptobot /opt/opa/data_collectors /opt/opa/models /opt/opa/data
+
+#create application user
+#RUN groupadd --gid 1000 opag \
+#    && useradd --uid 1000 --gid 1000 -m opa
+#RUN chown  -R opa /opt/opa
+
+USER opa
+
+WORKDIR /opt/opa/
+ADD api/backend/* .
+ADD cryptobot/ cryptobot/
+ADD data_collectors/ data_collectors/
+ADD config.yml .
+
+#RUN pip install -r ./requirements.txt
+
+EXPOSE 8000
+
+CMD python apiapp.py

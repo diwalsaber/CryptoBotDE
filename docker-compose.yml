@@ -7,7 +7,8 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
     volumes:
-      - ./postgres-data:/var/lib/postgresql/data
+      #- /mnt/opa/pgdata:/var/lib/postgresql/data
+      - ./pgdata:/var/lib/postgresql/data #local config
     ports:
       - 5433:5432
     networks:
@@ -26,11 +27,12 @@ services:
       APP_DB_PORT: 5432
       APP_DB_USERNAME: postgres
       APP_DB_PASSWORD: postgres
-    restart: always
-    depends_on:
-      - Database
+    volumes:
+      #- /mnt/opa/data:/opt/opa/data
+      - ./data:/opt/opa/data #local config
     networks:
       - crypto_network
+    restart: always
   api:
     container_name: api
     image: datascientestopa/crypto-api:1.0.0
@@ -49,10 +51,13 @@ services:
       JWT_REFRESH_SECRET_KEY: 95ba05f3438b434a4bdb3d8cfc08288c8120549dc17b29ba8279c54ed631eb55 #change me: use 'openssl rand -hex 32' to generate one
     restart: always
     volumes:
-      - "./models:/usr/crypto/models"
+      #- /mnt/opa/models:/opt/opa/models
+      - ./data:/opt/opa/data #local config
     ports:
       - 8000:8000
     depends_on:
+      - Database
+    links:
       - Database
     networks:
       - crypto_network
@@ -72,8 +77,11 @@ services:
       APP_DB_PASSWORD: postgres
     depends_on:
       - Database
+    links:
+      - Database
     networks:
       - crypto_network
+    restart: always
   frontend:
     container_name: frontend
     image: datascientestopa/crypto-frontend:1.0.0
@@ -94,9 +102,37 @@ services:
     ports:
       - 8501:8501
     depends_on:
+      - api
+    links:
+      - Database
+    networks:
+      - crypto_network
+  frontend2:
+    container_name: frontend2
+    image: datascientestopa/crypto-frontend2:1.0.0
+    environment:
+      DATA_DB_INSTANCE: postgres
+      DATA_DB_HOST: Database
+      DATA_DB_PORT: 5432
+      DATA_DB_USERNAME: postgres
+      DATA_DB_PASSWORD: postgres
+      PP_DB_INSTANCE:
+      APP_DB_HOST: Database
+      APP_DB_PORT: 5432
+      APP_DB_USERNAME: postgres
+      APP_DB_PASSWORD: postgres
+      API_HOST: api
+      API_PORT: 8000
+      API_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MTgxMjE5NTksInN1YiI6ImFkbWluIiwiaXNfYXBpX2tleSI6dHJ1ZX0.lKJ99XIvIHGq6yoIyep3pvN7iEZXhXN5Y3ykGYVOKq4
+    ports:
+      - 8502:8501
+    depends_on:
+      - api
+    links:
       - Database
     networks:
       - crypto_network
 networks:
   crypto_network:
     driver: bridge
+

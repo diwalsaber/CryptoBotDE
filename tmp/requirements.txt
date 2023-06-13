@@ -113,5 +113,3 @@ Werkzeug==2.3.4
 wrapt==1.14.1
 yarl==1.8.2
 zope.interface==6.0
-httpx==0.24.1
-pandas==2.0.1

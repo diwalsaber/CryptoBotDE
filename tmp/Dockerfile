@@ -12,12 +12,6 @@ RUN chown  -R opa /opt/opa
 USER opa
 
 WORKDIR /opt/opa/
-ADD api/backend/* .
-ADD cryptobot/ cryptobot/
-ADD data_collectors/ data_collectors/
-ADD config.yml .
+ADD tmp/requirements.txt .
 
 RUN pip install -r ./requirements.txt
-
-EXPOSE 8000
-CMD python apiapp.py

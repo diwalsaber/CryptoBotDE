@@ -14,7 +14,6 @@ header = ['open_time','open_price','high_price','low_price',
 
 def handle_socket_message(msg):
     content = msg['k']
-    print(msg)
     if content['x']:
         interval = content['i']
         # format data to insert it in database (table for real time data)
@@ -64,15 +63,14 @@ def insert_data_table(row):
     try:
         connection = DBConnector.get_data_db_connection()
         cur = connection.cursor()
-        insert_query = "INSERT INTO CandleStickHistorical VALUES (to_timestamp({}/1000),{},{},{},{},{},{},to_timestamp({}/1000),{},{},{},{})" \
-            .format(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11])
+        insert_query = f"""INSERT INTO CandleStickHistorical 
+            VALUES (to_timestamp({row[0]}/1000),{row[1]},{row[2]},{row[3]},{row[4]},{row[5]},{row[6]},
+            to_timestamp({row[7]}/1000),{row[8]},{row[9]},{row[10]},{row[11]}) ON CONFLICT DO NOTHING""";
         cur.execute(insert_query)
         cur.close()
         connection.commit()
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
+        raise error
     finally:
         DBConnector.return_data_db_connection(connection)
-
-
-download_realtime_data()
