@@ -1,3 +1,4 @@
+
 services:
   Database:
     container_name: Database
@@ -7,7 +8,6 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
     volumes:
-      #- /mnt/opa/pgdata:/var/lib/postgresql/data
       - ./pgdata:/var/lib/postgresql/data #local config
     ports:
       - 5433:5432
@@ -28,7 +28,6 @@ services:
       APP_DB_USERNAME: postgres
       APP_DB_PASSWORD: postgres
     volumes:
-      #- /mnt/opa/data:/opt/opa/data
       - ./data:/opt/opa/data #local config
     networks:
       - crypto_network
@@ -51,8 +50,8 @@ services:
       JWT_REFRESH_SECRET_KEY: 95ba05f3438b434a4bdb3d8cfc08288c8120549dc17b29ba8279c54ed631eb55 #change me: use 'openssl rand -hex 32' to generate one
     restart: always
     volumes:
-      #- /mnt/opa/models:/opt/opa/models
       - ./data:/opt/opa/data #local config
+      - ./models:/opt/opa/models #local config
     ports:
       - 8000:8000
     depends_on:
@@ -132,6 +131,7 @@ services:
       - Database
     networks:
       - crypto_network
+
 networks:
   crypto_network:
     driver: bridge

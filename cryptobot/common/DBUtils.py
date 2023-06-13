@@ -252,7 +252,7 @@ def delete_model_by_id(model_id:int):
             cursor = connection.cursor()
             #delete model from filesystem
             cursor.execute(
-                f"sdelete from models where id = {model_id}")
+                f"delete from models where id = {model_id}")
             connection.commit()
             return True
     finally:
