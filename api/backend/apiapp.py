@@ -8,7 +8,7 @@ from fastapi import FastAPI, status, HTTPException, Depends
 from keras.preprocessing.sequence import TimeseriesGenerator
 from starlette.responses import HTMLResponse
 
-import ModelUtils
+from ModelUtils import Models, load_prediction_data, get_moving_data, create_model_from_input
 from create_schema import create_data_db_schema, create_app_db_schema
 from cryptobot.common import DBUtils
 from cryptobot.common.DBUtils import add_history_config, get_ohlcv_from_db, get_prices_from_db, \
@@ -185,7 +185,7 @@ def models(include_deactivated:bool=False, user: UserAuth = Depends(is_admin)):
     return DBUtils.get_models(include_deactivated)
 @api.post('/model', tags=['Admin'])
 async def create_model(create_model_input:CreateModelInput, user: UserAuth = Depends(is_admin)):
-    model_id = ModelUtils.create_model(create_model_input)
+    model_id = create_model_from_input(create_model_input)
     model = DBUtils.get_model(model_id)
     if model:
         return model
@@ -199,8 +199,26 @@ def get_model(model_id:int, user: UserAuth = Depends(is_admin)):
 
 @api.delete('/model/{model_id}', tags=['Admin'])
 def delete_model(model_id:int, user: UserAuth = Depends(is_admin)):
-    if DBUtils.delete_model_by_id(model_id):
-        return {'status':'success'}
+    model_info = DBUtils.get_model(model_id)
+    if model_info:
+        if DBUtils.delete_model_by_id(model_id):
+            try:
+                os.remove(model_info['model_path'])
+            except OSError:
+                pass
+            try:
+                os.remove(model_info['features_scaler_path'])
+            except OSError:
+                pass
+            try:
+                os.remove(model_info['target_scaler_path'])
+            except OSError:
+                pass
+            return {'status':'success'}
+        else:
+            raise HTTPException(
+                status_code=404, detail=f"Model with ID {model_id} not found"
+            )
     else:
         raise HTTPException(
             status_code=404, detail=f"Model with ID {model_id} not found"
@@ -216,11 +234,11 @@ def deactivate_model(model_id:int, user: UserAuth = Depends(is_admin)):
 
 @api.post('/model/{model_id}/predict', name='Get the prediction of next interval', tags=['Admin'])
 def post_predict(model_id:int, user: UserAuth = Depends(is_admin)):
-    modelDict = ModelUtils.Models.get_instance().get_model_by_id(model_id)
+    modelDict = Models.get_instance().get_model_by_id(model_id)
     if modelDict and modelDict['features_scaler'] and modelDict['target_scaler'] and modelDict['model']:
         # Convertir les donn�es en DataFrame
         model_info = DBUtils.get_model(model_id)
-        data = ModelUtils.load_prediction_data(model_id)
+        data = load_prediction_data(model_id)
 
         # Normaliser les donn�es
         data_scaled = modelDict['features_scaler'].transform(data[model_info['features'].split(',')])
@@ -252,13 +270,13 @@ def post_predict(model_id:int, user: UserAuth = Depends(is_admin)):
 
 @api.post('/model/predict', name='Get the prediction of the active model', tags=['Public'])
 def post_predict_active_model(symbol:str, interval:str, nb_future: int=1, user: UserAuth = Depends(get_current_user)):
-    modelDict = ModelUtils.Models.get_instance().get_model_by_symbol(symbol, interval)
+    modelDict = Models.get_instance().get_model_by_symbol(symbol, interval)
     if modelDict and modelDict['features_scaler'] and modelDict['target_scaler'] and modelDict['model']:
         # Convertir les données en DataFrame
         model_id = DBUtils.get_id_model_active(symbol, interval)
         if model_id:
             model_info = DBUtils.get_model(model_id)
-            data = ModelUtils.load_prediction_data(model_id)
+            data = load_prediction_data(model_id)
 
             # Normaliser les donn�es
             data_scaled = modelDict['features_scaler'].transform(data[model_info['features'].split(',')])
@@ -267,7 +285,7 @@ def post_predict_active_model(symbol:str, interval:str, nb_future: int=1, user: 
             date_prediction_list = []
 
             # compute prediction date
-            date_prediction = ModelUtils.get_moving_data(30, modelDict['interval'], modelDict['lookback'])['close_time'].iloc[-1]
+            date_prediction = get_moving_data(30, modelDict['interval'], modelDict['lookback'])['close_time'].iloc[-1]
             date_prediction = datetime.datetime.strptime(str(date_prediction), '%Y-%m-%d %H:%M:%S')
             date_prediction = date_prediction.strftime('%Y-%m-%d')
             for i in range(nb_future):
@@ -319,7 +337,7 @@ def post_predict_active_model(symbol:str, interval:str, nb_future: int=1, user: 
     
 @api.post('/model/info', name='Get the information of the active model', tags=['Public'])
 def post_info_active_model(symbol:str, interval:str, user: UserAuth = Depends(get_current_user)):
-    modelDict = ModelUtils.Models.get_instance().get_model_by_symbol(symbol, interval)
+    modelDict = Models.get_instance().get_model_by_symbol(symbol, interval)
     if modelDict and modelDict['features_scaler'] and modelDict['target_scaler'] and modelDict['model']:
         model_id = DBUtils.get_id_model_active(symbol, interval)
         model_info = DBUtils.get_model(model_id)
@@ -373,7 +391,7 @@ async def start_history_download(config_id:int, user: UserAuth = Depends(is_admi
 async def get_data(nb_records: Optional[int]=3, interval: Optional[str]="1 day", mov_avg: Optional[int]=30, user: UserAuth = Depends(get_current_user)):
     """Get the data (open price, open time, close price, high price, close price, low price, volume) on the database for BTC/USDT
     """
-    df = ModelUtils.get_moving_data(mov_avg, interval, nb_records)
+    df = get_moving_data(mov_avg, interval, nb_records)
     if nb_records > len(df):
         nb_records = len(df)
 

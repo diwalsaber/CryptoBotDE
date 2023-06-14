@@ -13,6 +13,11 @@ services:
       - 5433:5432
     networks:
       - crypto_network
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "postgres" ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
   initdb:
     container_name: initdb
     image: datascientestopa/crypto-initdb:1.0.0
@@ -31,6 +36,9 @@ services:
       - ./data:/opt/opa/data #local config
     networks:
       - crypto_network
+    depends_on:
+      Database:
+        condition: service_healthy
     restart: always
   api:
     container_name: api
@@ -55,9 +63,8 @@ services:
     ports:
       - 8000:8000
     depends_on:
-      - Database
-    links:
-      - Database
+      Database:
+        condition: service_healthy
     networks:
       - crypto_network
   websocket:
@@ -69,15 +76,14 @@ services:
       DATA_DB_PORT: 5432
       DATA_DB_USERNAME: postgres
       DATA_DB_PASSWORD: postgres
-      PP_DB_INSTANCE:
+      PP_DB_INSTANCE: postgres
       APP_DB_HOST: Database
       APP_DB_PORT: 5432
       APP_DB_USERNAME: postgres
       APP_DB_PASSWORD: postgres
     depends_on:
-      - Database
-    links:
-      - Database
+      Database:
+        condition: service_healthy
     networks:
       - crypto_network
     restart: always
@@ -102,8 +108,6 @@ services:
       - 8501:8501
     depends_on:
       - api
-    links:
-      - Database
     networks:
       - crypto_network
   frontend2:
@@ -127,8 +131,6 @@ services:
       - 8502:8501
     depends_on:
       - api
-    links:
-      - Database
     networks:
       - crypto_network
 

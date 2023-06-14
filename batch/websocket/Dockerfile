@@ -17,4 +17,4 @@ ADD config.yml .
 
 RUN pip install -r ./requirements.txt
 
-CMD sleep 10 && python start_realtime_data_collector_websocket.py
+CMD python start_realtime_data_collector_websocket.py

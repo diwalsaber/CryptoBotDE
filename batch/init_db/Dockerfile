@@ -25,4 +25,4 @@ RUN pip install -r ./requirements.txt
 RUN echo "* * * * * python /opt/opa/download_data.py" > crontab.txt
 # Run the command on container startup
 RUN crontab crontab.txt
-CMD sleep 10 && cron -f
+CMD cron -f

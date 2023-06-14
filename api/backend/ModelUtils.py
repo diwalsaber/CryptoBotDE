@@ -104,7 +104,7 @@ def preprocess_data(data, feature_columns, target_column, test_size=0.2, batch_s
 
     return X_train, X_test, y_train, y_test, train_generator, test_generator, features_scaler, target_scaler
 
-def create_model(create_model_input:CreateModelInput):
+def create_model_from_input(create_model_input:CreateModelInput):
     df = load_data_from_Postgres(make_sql_query_from_input(create_model_input))
 
     model = create_lstm_model(create_model_input.lookback, len(create_model_input.features), create_model_input.units)
@@ -250,9 +250,9 @@ class Models(metaclass=Singleton):
         self.models = []
         db_models = DBUtils.get_models(True)
         for db_model in db_models:
-            if existsAndReadableFile(db_model['features_scaler_path']):
-                if existsAndReadableFile(db_model['target_scaler_path']):
-                    if existsAndReadableFile(db_model['model_path']):
+            if check_file(db_model['id'], db_model['features_scaler_path'])\
+                    and check_file(db_model['id'], db_model['model_path'])\
+                    and check_file(db_model['id'], db_model['target_scaler_path']):
                         try:
                             self.add_model(db_model['id'], db_model['symbol'], db_model['interval'],
                                            db_model['lookback'],
@@ -261,12 +261,6 @@ class Models(metaclass=Singleton):
                                            , joblib.load(db_model['target_scaler_path']))
                         except Exception as e:
                             print(f"Cannot load model with id {db_model['id']}:", e)
-                    else:
-                        print(f"model [id={db_model['id']}] file missing or has no read right:{db_model['model_path']}")
-                else:
-                    print(f"model [id={db_model['id']}] target scaler file missing or has no read right:{db_model['target_scaler_path']}")
-            else:
-                print(f"model [id={db_model['id']}] features scaler file missing or has no read right:{db_model['features_scaler_path']}")
 
 
     @staticmethod
@@ -293,8 +287,18 @@ class Models(metaclass=Singleton):
         if len(filtered) > 0:
             return filtered[0]
 
-def existsAndReadableFile(filename):
-    os.path.isfile(filename) and os.access(filename, os.R_OK)
+def check_file(model_id, filename):
+    if not os.path.exists(filename):
+        print(f"model [id={model_id}] file not found:{filename}")
+        return False
+    if not os.path.isfile(filename):
+        print(f"model [id={model_id}] not a file in path:{filename}")
+        return False
+
+    if not os.access(filename, os.R_OK):
+        print(f"model [id={model_id}] file has no read right:{filename}")
+        return False
+    return True
 def add_model(create_model_input:CreateModelInput, model, features_scaler, target_scaler, score):
     try:
         connection = DBConnector.get_app_db_connection()
@@ -310,7 +314,7 @@ def add_model(create_model_input:CreateModelInput, model, features_scaler, targe
         cursor.execute(f"""insert into models values ({model_id},'{create_model_input.symbol}',
         '{create_model_input.interval}',
         '{','.join(create_model_input.features)}',
-        '{create_model_input.target}',
+        '{create_model_input.target.name}',
         {create_model_input.lookback},
         {create_model_input.epochs},
         {create_model_input.units}, 

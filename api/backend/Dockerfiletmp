@@ -1,4 +1,4 @@
-FROM datascientestopa/tmp
+FROM tmp_todelete
 #FROM python:3.11.4
 
 

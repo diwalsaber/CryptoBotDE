@@ -49,7 +49,7 @@ class CreateModelInput(BaseModel):
     interval:str
     features: List[FeatureColumn]
     dir:str='models'
-    target:FeatureColumn=FeatureColumn.close_price
+    target:FeatureColumn= FeatureColumn.close_price
     epochs:int=10
     lookback:int=3
     units:int=50
