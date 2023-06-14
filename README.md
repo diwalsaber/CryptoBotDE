@@ -179,10 +179,14 @@ Accédez à votre application déployée en utilisant l'adresse IP externe de vo
 ## Accéder à l'application déployée
 
 Une fois l'application déployée sur Google Compute Engine, vous pouvez y accéder avec les adresses suivantes :
-
+### Version Production
 - Streamlit (frontend) : http://34.155.175.241:8501
 - FastAPI (backend) : http://34.155.175.241:8001/docs
 - Adminer (gestionnaire de base de données) : http://34.155.175.241:8087
 - Airflow (automatisation) : http://34.155.175.241:8080
+### Version Dev (AWS)
+- FastAPI (backend) : http://13.37.231.40:8000/docs
+- Streamlit (frontend) : http://13.37.231.40:8501
+
 
 Remplacez `http://EXTERNAL_IP/` par l'adresse IP externe de votre machine virtuelle Google Compute Engine.
