@@ -148,3 +148,41 @@ Pour arrêter et supprimer les conteneurs, les volumes et vider  tous les caches
 `docker compose down --volumes --remove-orphans`
 
 `docker system prune --all --force --volumes`
+
+
+## Déploiement avec Google Cloud Compute
+
+Pour déployer l'application sur une machine virtuelle Google Compute Engine, suivez les étapes ci-dessous :
+
+1. Installez [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) sur votre machine locale.
+
+2. Connectez-vous à votre compte Google Cloud en utilisant la commande `gcloud auth login`.
+
+3. Configurez votre projet Google Cloud avec la commande `gcloud config set project YOUR_PROJECT_ID`.
+
+4. Créez une instance de VM avec la commande `gcloud compute instances create INSTANCE_NAME`.
+
+5. Connectez-vous à votre instance VM en utilisant la commande `gcloud compute ssh INSTANCE_NAME`.
+
+6. Une fois connecté à la VM, installez Docker et Docker Compose en suivant les instructions appropriées pour le système d'exploitation de la VM.
+
+7. Clonez le dépôt sur la VM avec la commande `git clone https://github.com/diwalsaber/CryptoBotDE.git`.
+
+8. Naviguez dans le dossier du projet avec `cd CryptoBotDE`.
+
+9. Suivez les instructions d'installation et d'exécution fournies ci-dessus pour construire et lancer les conteneurs Docker.
+
+Veuillez noter que vous devrez également configurer les règles du pare-feu Google Cloud pour permettre le trafic vers les ports utilisés par vos services. Vous pouvez le faire dans la console Google Cloud en naviguant vers `VPC Network -> Firewall -> Create Firewall Rule`.
+
+Accédez à votre application déployée en utilisant l'adresse IP externe de votre VM et le port sur lequel votre service est exposé. Par exemple, si votre service est accessible sur le port 8080, vous pouvez y accéder en utilisant `http://EXTERNAL_IP:8080`.
+
+## Accéder à l'application déployée
+
+Une fois l'application déployée sur Google Compute Engine, vous pouvez y accéder avec les adresses suivantes :
+
+- Streamlit (frontend) : http://http://34.155.175.241/:8501
+- FastAPI (backend) : http://http://34.155.175.241/:8001/docs
+- Adminer (gestionnaire de base de données) : http://http://34.155.175.241/:8087
+- Airflow (automatisation) : http://http://34.155.175.241/:8080
+
+Remplacez `http://EXTERNAL_IP/` par l'adresse IP externe de votre machine virtuelle Google Compute Engine.
