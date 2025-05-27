@@ -4,6 +4,24 @@
 
 CryptoBotDE est une application de trading de cryptomonnaies basée sur des modèles d'apprentissage automatique. L'application est composée d'un frontend Streamlit, d'un backend FastAPI, d'un service de données personnalisé pour la collecte de données historiques, et d'Apache Airflow pour l'automatisation des tâches.
 
+## Architecture des Données
+
+Le système de gestion des données de CryptoBotDE est conçu pour assurer à la fois un chargement initial robuste des données historiques et des mises à jour incrémentales efficaces.
+
+### Flux de Données - Chargement Initial
+
+1.  **Source** : API Binance (pour les données de marché historiques de BTCUSDT).
+2.  **Traitement** : Le script `data/binance_to_db.py` (exécuté par le service Docker `history`) récupère un volume important de données historiques.
+3.  **Staging en Parquet** : Avant l'insertion en base, les données collectées sont converties en DataFrame Pandas et sauvegardées temporairement au format Apache Parquet dans le répertoire `data/parquet_files_output/` (sur l'hôte). Ce format colonnaire est optimisé pour le stockage et les requêtes analytiques, offrant une compression efficace et une préservation des types de données. Cette étape de staging permet également de découpler la collecte de l'écriture en base et facilite d'éventuelles analyses ou traitements batch ultérieurs sur les fichiers Parquet.
+4.  **Stockage Final** : Les données sont ensuite lues depuis les fichiers Parquet et insérées dans une base de données TimescaleDB, optimisée pour les séries temporelles.
+
+### Flux de Données - Mises à Jour Incrémentales
+
+1.  **Source** : API Binance.
+2.  **Orchestration** : Un DAG Apache Airflow (`airflow/dags/update_db_dag.py`) s'exécute toutes les 15 minutes.
+3.  **Traitement** : Le DAG récupère les dernières bougies de 15 minutes pour BTCUSDT.
+4.  **Stockage Direct** : Ces nouvelles données sont directement insérées dans la table TimescaleDB correspondante, assurant ainsi la fraîcheur des informations pour le backend et le frontend.
+
 ## Structure du projet
 
 Le projet est structuré en trois parties principales : le backend, le frontend et une partie data.
@@ -63,6 +81,8 @@ Le frontend de l'application est construit avec Streamlit et contient les élém
 
 Ce projet comprend un service de données nommé `history`, qui est un service personnalisé défini dans le fichier `docker-compose.yml`. Ce service est responsable de la collecte et du stockage des données historiques nécessaires pour l'application.
 
+Lors du chargement initial, ce service récupère les données de Binance, les sauvegarde temporairement au format Apache Parquet dans le répertoire `data/parquet_files_output/` (mappé depuis `/app/parquet_data` dans le conteneur), puis les insère dans TimescaleDB. L'utilisation de Parquet permet un stockage efficace et facilite d'éventuels traitements de données futurs.
+
 Ce service utilise une image Docker construite à partir d'un Dockerfile situé dans le répertoire `./data/`. Les logs de ce service sont stockés dans le répertoire `./logs/`.
 
 Une fois l'application lancée avec Docker Compose, ce service est accessible via le port 8087.
@@ -75,7 +95,33 @@ Le service Airflow, situé dans le répertoire airflow/, est utilisé pour autom
 
 ## Installation et exécution
 
-Pour installer et exécuter ce projet, vous devez avoir Docker et Docker Compose installés sur votre machine. Une fois que c'est fait, vous pouvez construire et exécuter l'application avec les commandes suivantes :
+Pour installer et exécuter ce projet, vous devez avoir Docker et Docker Compose installés sur votre machine.
+
+### Configuration des Clés API
+
+Avant de lancer l'application, vous devez configurer vos clés API Binance. Ces clés sont nécessaires pour que le service de collecte de données (`history`) et Apache Airflow puissent accéder à l'API Binance.
+
+Modifiez le fichier `docker-compose.yml` et renseignez vos clés dans les sections `environment` des services suivants :
+-   `history`
+-   `airflow-worker`
+-   `airflow-scheduler`
+-   `airflow-webserver` (recommandé pour la cohérence)
+
+Voici un exemple pour un service :
+
+```yaml
+services:
+  history: # Ou airflow-worker, etc.
+    # ... autres configurations ...
+    environment:
+      BINANCE_API_KEY: "VOTRE_VRAIE_CLE_API"
+      BINANCE_API_SECRET: "VOTRE_SECRET_API"
+    # ... autres configurations ...
+```
+
+**Important** : Ne committez jamais vos clés API réelles dans un dépôt public. Si vous clonez ce projet, assurez-vous que `docker-compose.yml` avec vos clés n'est pas suivi par Git (par exemple, en l'ajoutant à `.gitignore` si ce n'est pas un fichier que vous partagez avec des clés). Pour ce projet, les clés sont lues depuis les variables d'environnement pour éviter de les écrire en dur dans le code.
+
+Une fois que c'est fait, vous pouvez construire et exécuter l'application avec les commandes suivantes :
 
 ### Cloner le dépôt
 

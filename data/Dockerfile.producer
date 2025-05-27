@@ -1,0 +1,13 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Installer les dépendances
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Le requirements.txt doit contenir :
+# kafka-python
+# python-binance
+
+# Le command est défini dans le docker-compose.yml 

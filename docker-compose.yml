@@ -1,10 +1,9 @@
-version: '3.1'
 x-airflow-common:
   &airflow-common
   # In order to add custom dependencies or upgrade provider packages you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.6.1}
+  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.6.1} # Commentée pour utiliser l'image construite à partir du Dockerfile
   # build: .
   environment:
     &airflow-common-env
@@ -26,11 +25,14 @@ x-airflow-common:
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    # Connexion Spark standardisée et complète
+    AIRFLOW_CONN_SPARK_DEFAULT: 'spark://spark-master:7077?deploy-mode=client'
   volumes:
     - ${AIRFLOW_PROJ_DIR:-./airflow}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-./airflow}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-./airflow}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-./airflow}/plugins:/opt/airflow/plugins
+    - ./data:/opt/bitnami/spark/data
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -69,8 +71,12 @@ services:
     build:
       context: ./data/
       dockerfile: Dockerfile
+    environment:
+      BINANCE_API_KEY: "VOTRE_VRAIE_CLE_API_ICI"
+      BINANCE_API_SECRET: "VOTRE_VRAI_SECRET_API_ICI"
     volumes:
       - ./logs:/var/log
+      - ./data/parquet_files_output:/app/parquet_data
     ports:
       - 8002:8002
     depends_on:
@@ -143,6 +149,10 @@ services:
     build:
       context: ./airflow/
       dockerfile: Dockerfile
+    environment: # Ajout ou s'assurer que la section existe
+      <<: *airflow-common-env # Si hérite de variables communes
+      BINANCE_API_KEY: "VOTRE_VRAIE_CLE_API_ICI"
+      BINANCE_API_SECRET: "VOTRE_VRAI_SECRET_API_ICI"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
@@ -163,6 +173,10 @@ services:
     build:
       context: ./airflow/
       dockerfile: Dockerfile
+    environment: # Ajout ou s'assurer que la section existe
+      <<: *airflow-common-env # Si hérite de variables communes
+      BINANCE_API_KEY: "VOTRE_VRAIE_CLE_API_ICI"
+      BINANCE_API_SECRET: "VOTRE_VRAI_SECRET_API_ICI"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
       interval: 30s
@@ -180,6 +194,9 @@ services:
   airflow-worker:
     <<: *airflow-common
     command: celery worker
+    build:
+      context: ./airflow/
+      dockerfile: Dockerfile
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -193,6 +210,8 @@ services:
       # Required to handle warm shutdown of the celery workers properly
       # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
       DUMB_INIT_SETSID: "0"
+      BINANCE_API_KEY: "VOTRE_VRAIE_CLE_API_ICI"
+      BINANCE_API_SECRET: "VOTRE_VRAI_SECRET_API_ICI"
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
@@ -204,6 +223,9 @@ services:
   airflow-triggerer:
     <<: *airflow-common
     command: triggerer
+    build:
+      context: ./airflow/
+      dockerfile: Dockerfile
     healthcheck:
       test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
       interval: 30s
@@ -220,6 +242,9 @@ services:
 
   airflow-init:
     <<: *airflow-common
+    build:
+      context: ./airflow/
+      dockerfile: Dockerfile
     entrypoint: /bin/bash
     # yamllint disable rule:line-length
     command:
@@ -302,6 +327,9 @@ services:
     <<: *airflow-common
     profiles:
       - debug
+    build:
+      context: ./airflow/
+      dockerfile: Dockerfile
     environment:
       <<: *airflow-common-env
       CONNECTION_CHECK_MAX_COUNT: "0"
@@ -319,6 +347,9 @@ services:
     command: celery flower
     profiles:
       - flower
+    build:
+      context: ./airflow/
+      dockerfile: Dockerfile
     ports:
       - "5555:5555"
     healthcheck:
@@ -332,6 +363,95 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+
+  spark-master:
+    # image: bitnami/spark:3.5
+    build:
+      context: ./data
+      dockerfile: Dockerfile.spark
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - '8081:8080' # Web UI du master Spark
+      - '7077:7077' # Port pour les workers Spark pour se connecter au master
+    networks:
+      - app-network
+    volumes:
+      - ./data:/opt/bitnami/spark/data # Mapper le répertoire data pour que Spark puisse accéder aux scripts et aux fichiers Parquet
+
+  spark-worker:
+    # image: bitnami/spark:3.5
+    build:
+      context: ./data
+      dockerfile: Dockerfile.spark
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports: # Optionnel, pour accéder à l'UI du worker si nécessaire
+      - '8082:8081'
+    depends_on:
+      - spark-master
+    networks:
+      - app-network
+    volumes:
+      - ./data:/opt/bitnami/spark/data # Mapper le répertoire data
+
+  zookeeper:
+    image: bitnami/zookeeper:3.8
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    networks:
+      - app-network
+
+  kafka:
+    image: bitnami/kafka:3.5
+    container_name: kafka
+    ports:
+      - "9092:9092" # Pour les clients internes au réseau docker
+      - "9093:9093" # Pour les clients externes (votre machine hôte si besoin)
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CLIENT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=CLIENT://:9092,EXTERNAL://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=CLIENT://kafka:9092,EXTERNAL://localhost:9093
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=CLIENT
+    depends_on:
+      - zookeeper
+    networks:
+      - app-network
+
+  kafka-producer:
+    build:
+      context: ./data
+      dockerfile: Dockerfile.producer
+    container_name: kafka-producer
+    depends_on:
+      - kafka
+    networks:
+      - app-network
+    environment:
+      KAFKA_BROKER_URL: "kafka:9092"
+      BINANCE_API_KEY_PRODUCER: "${BINANCE_API_KEY_PRODUCER:-YOUR_PRODUCER_API_KEY}" # Assurez-vous de définir cette variable dans votre .env ou directement
+      BINANCE_API_SECRET_PRODUCER: "${BINANCE_API_SECRET_PRODUCER:-YOUR_PRODUCER_API_SECRET}" # Assurez-vous de définir cette variable dans votre .env ou directement
+    volumes:
+      - ./data:/app # Pour que le script soit accessible
+    command: ["python", "/app/kafka_producer_historical.py"]
 
 volumes:
   postgres-db-volume:
