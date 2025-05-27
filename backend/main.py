@@ -1,20 +1,33 @@
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from keras.models import load_model
 from datetime import timedelta
 import psycopg2 as pg
 import pandas as pd
 import joblib
-from binance import AsyncClient, BinanceSocketManager
+# Imports kept for future use
+# from binance import AsyncClient, BinanceSocketManager
+# from fastapi import WebSocket
+
+# Import configuration
+from config import config
+
+# Validate configuration at startup
+try:
+    config.validate_config()
+except ValueError as e:
+    print(f"Configuration error: {e}")
+    raise
 
 # Charger le modèle de prédiction et le scaler
-model = load_model('lstm.h5')
-scaler = joblib.load('scaler.job')
+model = load_model(config.MODEL_PATH)
+scaler = joblib.load(config.SCALER_PATH)
 
 # Initialiser FastAPI
 app = FastAPI(
     title="Crypto Trading Bot",
-    description="This is an API for tracking the latest Bitcoin prices in real time and predict the future price.",
+    description="This is an API for tracking the latest Bitcoin prices "
+                "in real time and predict the future price.",
     version="1.0.0"
 )
 
@@ -23,6 +36,7 @@ app = FastAPI(
 async def root():
     return {"message": "Bienvenue sur l'API de prévision du cours du Bitcoin"}
 
+
 class Input(BaseModel):
     """
     Classe pour la validation de l'entrée.
@@ -30,26 +44,34 @@ class Input(BaseModel):
     """
     data: list[float]
 
-def execute_query(query, host='timescaledb', port=5432, dbname='postgres', user='postgres', password='postgres'):
+
+def execute_query(query, host=None, port=None, dbname=None, 
+                  user=None, password=None):
     """Load the dataset from a PostgreSQL TimescaleDB table using a SQL query.
     
     Args:
         query (str): The SQL query to load the data.
-        host (str, optional): The database server address. Defaults to 'localhost'.
-        port (int, optional): The database server port. Defaults to 5432.
-        dbname (str, optional): The name of the database. Defaults to 'postgres'.
-        user (str, optional): The username used to connect to the database. Defaults to 'postgres'.
-        password (str, optional): The password used to connect to the database. Defaults to 'postgres'.
+        host (str, optional): The database server address. 
+            Defaults to config value.
+        port (int, optional): The database server port. 
+            Defaults to config value.
+        dbname (str, optional): The name of the database. 
+            Defaults to config value.
+        user (str, optional): The username used to connect to the database. 
+            Defaults to config value.
+        password (str, optional): The password used to connect to the database.
+            Defaults to config value.
         
     Returns:
-        pandas.DataFrame: The loaded dataset from Timescale DB as a pandas DataFrame.
+        pandas.DataFrame: The loaded dataset from Timescale DB as a pandas 
+            DataFrame.
     """
     connection_params = {
-        'host': host,
-        'port': port,
-        'dbname': dbname,
-        'user': user,
-        'password': password
+        'host': host or config.DB_HOST,
+        'port': port or config.DB_PORT,
+        'dbname': dbname or config.DB_NAME,
+        'user': user or config.DB_USER,
+        'password': password or config.DB_PASSWORD
     }
 
     with pg.connect(**connection_params) as conn:
@@ -231,3 +253,24 @@ async def latest_price():
     latest_price = result['close'][0]
 
     return {"latest_price": latest_price}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for container orchestration."""
+    try:
+        # Try to connect to database
+        query = "SELECT 1"
+        execute_query(query)
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
+
+# Run the application with environment configuration
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        app, 
+        host=config.BACKEND_HOST, 
+        port=config.BACKEND_PORT,
+        reload=config.DEBUG
+    )

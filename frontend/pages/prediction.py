@@ -1,12 +1,19 @@
 import streamlit as st
 import requests
 from binance.client import Client
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import configuration
+from config import config
 
 # URL du backend pour la prédiction
-BACKEND = "http://fastapi:8001"
+BACKEND = config.BACKEND_URL
 
-# Initialiser le client Binance
-client = Client(api_key='your_api_key', api_secret='your_api_secret')
+# Initialiser le client Binance avec les clés de configuration
+client = Client(api_key=config.BINANCE_API_KEY, 
+                api_secret=config.BINANCE_API_SECRET)
 
 st.set_option('deprecation.showPyplotGlobalUse', False)
 st.set_page_config(page_title="prediction", page_icon="🔮", layout="wide")
