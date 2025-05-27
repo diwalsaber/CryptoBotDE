@@ -1,1 +1,59 @@
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Environnement et secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Logs
+logs/
+*.log
+airflow/logs/
+
+# Data
+data/timescale/
+data/parquet_data/
+data/parquet_files_output/
+*.parquet
+*.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Docker volumes
+postgres-db-volume/
+
+# ML Models (si vous voulez les exclure)
+# *.h5
+# *.job
+
+# Airflow
+airflow/airflow.db
+airflow/airflow-webserver.pid
+airflow/standalone_admin_password.txt
